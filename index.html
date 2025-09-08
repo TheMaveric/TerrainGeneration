@@ -948,8 +948,10 @@
         });
 
         window.onload = () => {
-            generatePerlinMaps();
             handleLoadAndResize();
+            generatePerlinMaps();
+            generateWorldData(player.x, player.y);
+            drawWorld();
             gameLoop(0); 
         };
 
