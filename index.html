@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Procedural Terrain Explorer</title>
+    <title>Procedural Crafting Explorer</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
     <style>
@@ -68,14 +68,14 @@
         <div id="player">
             <span id="player-emoji" class="text-lg">🚶</span>
         </div>
-        <div id="loading" class="absolute inset-0 flex items-center justify-center bg-gray-800 bg-opacity-75 z-10 transition-opacity duration-300 hidden">
+        <div id="loading" class="absolute inset-0 flex items-center justify-center bg-gray-800 bg-opacity-75 z-50 transition-opacity duration-300 hidden">
             <svg class="animate-spin h-8 w-8 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
         </div>
         <!-- In-game HUD -->
-        <div class="absolute top-4 left-4 p-3 bg-gray-800 rounded-lg shadow-md z-20">
+        <div class="absolute top-4 left-4 p-3 bg-gray-800 bg-opacity-75 rounded-lg shadow-md z-20">
             <div class="flex flex-col gap-2 text-sm font-semibold">
                 <div class="flex justify-between items-center">
                     <span>💧 Thirst:</span>
@@ -97,6 +97,10 @@
                         <span>🌲 Biome:</span>
                         <span id="biomeText">...</span>
                     </div>
+                     <div class="flex justify-between items-center">
+                        <span>🛖 Shelter:</span>
+                        <span id="shelterStatus" class="text-red-400">No</span>
+                    </div>
                     <div class="flex justify-between items-center">
                         <span>⌨️ Keys:</span>
                         <span id="keysText">...</span>
@@ -104,7 +108,7 @@
                 </div>
             </div>
         </div>
-        <div class="absolute top-4 right-4 p-3 bg-gray-800 rounded-lg shadow-md z-20">
+        <div class="absolute top-4 right-4 p-3 bg-gray-800 bg-opacity-75 rounded-lg shadow-md z-20">
             <div class="flex flex-col gap-2 text-sm font-semibold">
                 <div class="flex justify-between items-center">
                     <span>🪵 Wood:</span>
@@ -150,7 +154,10 @@
     <div id="pauseMenu" class="fixed inset-0 bg-gray-900 bg-opacity-80 flex items-center justify-center z-50 hidden p-4">
         <div class="bg-gray-800 p-6 sm:p-8 rounded-xl shadow-lg w-full max-w-2xl flex flex-col items-center gap-6">
             <h2 class="text-2xl sm:text-3xl font-bold text-white text-center">Game Paused</h2>
-            <p class="text-sm text-gray-400">Press <kbd class="px-2 py-1 text-xs font-semibold bg-gray-700 rounded-md border border-gray-600">Esc</kbd> to resume.</p>
+            <div class="text-center">
+                <p class="text-sm text-gray-400">Press <kbd class="px-2 py-1 text-xs font-semibold bg-gray-700 rounded-md border border-gray-600">Esc</kbd> to resume.</p>
+                <p class="text-sm text-gray-400 mt-1">Press <kbd class="px-2 py-1 text-xs font-semibold bg-gray-700 rounded-md border border-gray-600">C</kbd> for crafting.</p>
+            </div>
             <div class="controls w-full grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div class="flex flex-col items-center">
                     <label for="seedInput" class="text-sm font-semibold mb-2">Seed</label>
@@ -200,6 +207,30 @@
         </div>
     </div>
     
+    <!-- Crafting Menu -->
+    <div id="craftingMenu" class="fixed inset-0 bg-gray-900 bg-opacity-80 flex items-center justify-center z-50 hidden p-4">
+        <div class="bg-gray-800 p-6 sm:p-8 rounded-xl shadow-lg w-full max-w-md flex flex-col items-center gap-6">
+            <h2 class="text-2xl sm:text-3xl font-bold text-white text-center">Crafting</h2>
+            <p class="text-sm text-gray-400">Press <kbd class="px-2 py-1 text-xs font-semibold bg-gray-700 rounded-md border border-gray-600">C</kbd> to close.</p>
+            <div class="w-full bg-gray-700 rounded-lg p-4">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h3 class="text-lg font-bold">Shelter 🛖</h3>
+                        <p class="text-sm text-gray-400">Stops thirst from decreasing.</p>
+                        <div class="mt-2 text-sm">
+                            <span>Cost: </span>
+                            <span id="shelterWoodCost" class="font-mono">10 🪵</span>, 
+                            <span id="shelterStoneCost" class="font-mono">5 🪨</span>
+                        </div>
+                    </div>
+                    <button id="craftShelterButton" class="px-4 py-2 bg-blue-600 rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors">
+                        Craft
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         // CORE NOISE AND MATH FUNCTIONS
         function seededRandom(seed) {
@@ -240,7 +271,7 @@
                 const BA = this.p[B];
                 const BB = this.p[B + 1];
                 const result = this.lerp(v, this.lerp(u, this.grad(this.p[AA], x, y), this.grad(this.p[BA], x - 1, y)),
-                                          this.lerp(u, this.grad(this.p[AB], x, y - 1), this.grad(this.p[BB], x - 1, y - 1)));
+                                         this.lerp(u, this.grad(this.p[AB], x, y - 1), this.grad(this.p[BB], x - 1, y - 1)));
                 return (result + 1.0) / 2.0;
             }
             fade(t) {
@@ -449,60 +480,41 @@
         function getTreeThreshold(biome, sliders) {
              const { forestTreeDensity, grasslandTreeDensity } = sliders;
              switch (biome) {
-                case 'forest':
-                case 'forestHills':
-                case 'rainforest':
-                case 'jungle':
-                case 'jungleHills':
-                case 'taiga':
-                case 'taigaHills':
-                case 'snowyTaiga':
-                case 'snowyTaigaHills':
-                    return forestTreeDensity;
-                case 'grassland':
-                case 'savanna':
-                case 'savannaPlateau':
-                case 'plain':
-                    return grasslandTreeDensity;
-                default:
-                    return 0;
-            }
+                 case 'forest':
+                 case 'forestHills':
+                 case 'rainforest':
+                 case 'jungle':
+                 case 'jungleHills':
+                 case 'taiga':
+                 case 'taigaHills':
+                 case 'snowyTaiga':
+                 case 'snowyTaigaHills':
+                     return forestTreeDensity;
+                 case 'grassland':
+                 case 'savanna':
+                 case 'savannaPlateau':
+                 case 'plain':
+                     return grasslandTreeDensity;
+                 default:
+                     return 0;
+             }
         }
 
         // WORLD GENERATION & DRAWING
-        let worldData;
-        let worldDataWorldX, worldDataWorldY;
-        let worldWidth, worldHeight; // Global variables for world dimensions
-        const tempCanvas = document.createElement('canvas');
-        const tempCtx = tempCanvas.getContext('2d');
         const minimapCanvas = document.getElementById('minimapCanvas');
         const minimapCtx = minimapCanvas.getContext('2d');
         const MINIMAP_SIZE = 100;
         minimapCanvas.width = MINIMAP_SIZE;
         minimapCanvas.height = MINIMAP_SIZE;
 
-        function generatePerlinMaps() {
-            const seed = parseInt(seedInput.value) || 0;
-            perlinHeight = new PerlinNoise(seed);
-            perlinMoisture = new PerlinNoise(seed + 1);
-            perlinObject = new PerlinNoise(seed + 2);
-            perlinTemperature = new PerlinNoise(seed + 3);
-            perlinRiver = new PerlinNoise(seed + 4);
-        }
+        const CHUNK_SIZE = 32; // tiles per chunk
+        const MAX_CACHE_SIZE = 250; // max number of chunks in memory
+        const chunkCache = new Map();
+        let lastMinimapPlayerPos = { x: null, y: null };
 
-        function generateWorldData(playerX, playerY) {
-            const pixelScale = parseInt(pixelScaleSlider.value);
-            const viewportWidth = viewport.clientWidth;
-            const viewportHeight = viewport.clientHeight;
-            
-            worldWidth = Math.ceil(viewportWidth / pixelScale) + 2;
-            worldHeight = Math.ceil(viewportHeight / pixelScale) + 2;
 
-            worldDataWorldX = Math.round(playerX) - Math.floor(worldWidth / 2);
-            worldDataWorldY = Math.round(playerY) - Math.floor(worldHeight / 2);
-
-            worldData = new Uint8ClampedArray(worldWidth * worldHeight * 4);
-            const sliders = {
+        function getSliderValues() {
+             return {
                 heightScale: parseFloat(heightScaleSlider.value),
                 moistureScale: parseFloat(moistureScaleSlider.value),
                 pixelScale: parseFloat(pixelScaleSlider.value),
@@ -514,11 +526,55 @@
                 forestTreeDensity: parseFloat(forestTreeDensitySlider.value),
                 grasslandTreeDensity: parseFloat(grasslandTreeDensitySlider.value)
             };
+        }
 
-            for (let y = 0; y < worldHeight; y++) {
-                for (let x = 0; x < worldWidth; x++) {
-                    const worldX = worldDataWorldX + x;
-                    const worldY = worldDataWorldY + y;
+        function manageCache() {
+            if (chunkCache.size <= MAX_CACHE_SIZE) return;
+
+            const playerChunkX = Math.floor(player.x / CHUNK_SIZE);
+            const playerChunkY = Math.floor(player.y / CHUNK_SIZE);
+
+            let farthestKey = null;
+            let maxDistSq = -1;
+
+            for (const key of chunkCache.keys()) {
+                const [cx, cy] = key.split(',').map(Number);
+                const distSq = (cx - playerChunkX) ** 2 + (cy - playerChunkY) ** 2;
+                if (distSq > maxDistSq) {
+                    maxDistSq = distSq;
+                    farthestKey = key;
+                }
+            }
+
+            if (farthestKey) {
+                chunkCache.delete(farthestKey);
+            }
+        }
+
+
+        function generatePerlinMaps() {
+            const seed = parseInt(seedInput.value) || 0;
+            perlinHeight = new PerlinNoise(seed);
+            perlinMoisture = new PerlinNoise(seed + 1);
+            perlinObject = new PerlinNoise(seed + 2);
+            perlinTemperature = new PerlinNoise(seed + 3);
+            perlinRiver = new PerlinNoise(seed + 4);
+        }
+
+        function generateChunkData(chunkX, chunkY, sliders) {
+            const chunkCanvas = document.createElement('canvas');
+            chunkCanvas.width = CHUNK_SIZE;
+            chunkCanvas.height = CHUNK_SIZE;
+            const chunkCtx = chunkCanvas.getContext('2d');
+            const chunkImageData = chunkCtx.createImageData(CHUNK_SIZE, CHUNK_SIZE);
+            const data = chunkImageData.data;
+            const objects = [];
+
+            for (let y = 0; y < CHUNK_SIZE; y++) {
+                for (let x = 0; x < CHUNK_SIZE; x++) {
+                    const worldX = chunkX * CHUNK_SIZE + x;
+                    const worldY = chunkY * CHUNK_SIZE + y;
+                    
                     const biome = getBiomeAtWorldCoords(worldX, worldY, perlinHeight, perlinMoisture, perlinTemperature, perlinRiver, sliders);
                     const baseColor = BIOME_COLORS[biome] || [0,0,0];
                     const heightValue = getHeightValueAtWorldCoords(worldX, worldY, perlinHeight, sliders.heightScale, sliders.octaves, sliders.persistence);
@@ -528,17 +584,28 @@
                     const g = Math.min(255, Math.max(0, baseColor[1] * lightness));
                     const b = Math.min(255, Math.max(0, baseColor[2] * lightness));
 
-                    const idx = (y * worldWidth + x) * 4;
-                    worldData[idx] = r;
-                    worldData[idx + 1] = g;
-                    worldData[idx + 2] = b;
-                    worldData[idx + 3] = 255;
+                    const idx = (y * CHUNK_SIZE + x) * 4;
+                    data[idx] = r;
+                    data[idx + 1] = g;
+                    data[idx + 2] = b;
+                    data[idx + 3] = 255;
+                    
+                    const objectValue = perlinObject.noise(worldX, worldY);
+                    const treeThreshold = getTreeThreshold(biome, sliders);
+                    if (objectValue > (1.0 - treeThreshold) && !biome.includes('Water') && biome !== 'river') {
+                        objects.push({ x: worldX, y: worldY, emoji: '🌳', color: 'green' });
+                    }
                 }
             }
+            chunkCtx.putImageData(chunkImageData, 0, 0);
+
+            const key = `${chunkX},${chunkY}`;
+            chunkCache.set(key, { canvas: chunkCanvas, objects: objects });
+            manageCache();
         }
 
         function drawWorld() {
-            if (!worldData || isGenerating) return;
+            if (isGenerating || !perlinHeight) return;
 
             const pixelScale = parseInt(pixelScaleSlider.value);
             const viewportWidth = viewport.clientWidth;
@@ -546,64 +613,70 @@
             
             canvas.width = viewportWidth;
             canvas.height = viewportHeight;
-
-            const imageData = new ImageData(worldData, worldWidth, worldHeight);
-            
-            tempCanvas.width = worldWidth;
-            tempCanvas.height = worldHeight;
-            tempCtx.putImageData(imageData, 0, 0);
-
             ctx.clearRect(0, 0, viewportWidth, viewportHeight);
             ctx.imageSmoothingEnabled = false;
-            ctx.drawImage(tempCanvas, 0, 0, worldWidth, worldHeight, 0, 0, viewportWidth, viewportHeight);
 
-            // Draw trees and other objects
-            const playerWorldX = Math.round(player.x);
-            const playerWorldY = Math.round(player.y);
-            
-            const startX = playerWorldX - Math.floor(viewportWidth / (2 * pixelScale));
-            const startY = playerWorldY - Math.floor(viewportHeight / (2 * pixelScale));
-            const endX = startX + Math.ceil(viewportWidth / pixelScale) +1;
-            const endY = startY + Math.ceil(viewportHeight / pixelScale) +1;
+            const viewTilesX = viewportWidth / pixelScale;
+            const viewTilesY = viewportHeight / pixelScale;
+            const startTileX = player.x - viewTilesX / 2;
+            const endTileX = player.x + viewTilesX / 2;
+            const startTileY = player.y - viewTilesY / 2;
+            const endTileY = player.y + viewTilesY / 2;
 
-            const sliders = {
-                forestTreeDensity: parseFloat(forestTreeDensitySlider.value),
-                grasslandTreeDensity: parseFloat(grasslandTreeDensitySlider.value)
-            };
+            const startChunkX = Math.floor(startTileX / CHUNK_SIZE);
+            const endChunkX = Math.ceil(endTileX / CHUNK_SIZE);
+            const startChunkY = Math.floor(startTileY / CHUNK_SIZE);
+            const endChunkY = Math.ceil(endTileY / CHUNK_SIZE);
 
-            for (let y = startY; y < endY; y++) {
-                for (let x = startX; x < endX; x++) {
-                    const biome = getBiomeAtWorldCoords(x, y, perlinHeight, perlinMoisture, perlinTemperature, perlinRiver, sliders);
-                    const objectValue = perlinObject.noise(x, y);
-                    let treeThreshold = getTreeThreshold(biome, sliders);
+            const sliders = getSliderValues();
+
+            for (let cy = startChunkY; cy < endChunkY; cy++) {
+                for (let cx = startChunkX; cx < endChunkX; cx++) {
+                    const key = `${cx},${cy}`;
+                    if (!chunkCache.has(key)) {
+                        generateChunkData(cx, cy, sliders);
+                    }
+                    const chunk = chunkCache.get(key);
+                    if(!chunk) continue;
+
+                    const screenX = (cx * CHUNK_SIZE - startTileX) * pixelScale;
+                    const screenY = (cy * CHUNK_SIZE - startTileY) * pixelScale;
                     
-                    if (objectValue > (1.0 - treeThreshold)) {
-                         if (!biome.includes('Water') && biome !== 'river') {
-                            ctx.font = `${pixelScale}px sans-serif`;
-                            ctx.textAlign = 'center';
-                            ctx.textBaseline = 'middle';
-                            ctx.fillStyle = 'green';
-                            ctx.fillText('🌳', (x - startX) * pixelScale + pixelScale / 2, (y - startY) * pixelScale + pixelScale / 2);
-                         }
+                    ctx.drawImage(chunk.canvas, screenX, screenY, CHUNK_SIZE * pixelScale, CHUNK_SIZE * pixelScale);
+                    
+                    ctx.font = `${pixelScale}px sans-serif`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    for (const obj of chunk.objects) {
+                         const objScreenX = (obj.x - startTileX) * pixelScale;
+                         const objScreenY = (obj.y - startTileY) * pixelScale;
+                         ctx.fillStyle = obj.color;
+                         ctx.fillText(obj.emoji, objScreenX + pixelScale / 2, objScreenY + pixelScale / 2);
                     }
                 }
             }
             
-            // Re-center the player on the viewport
             playerDiv.style.left = `${viewportWidth / 2}px`;
             playerDiv.style.top = `${viewportHeight / 2}px`;
         }
         
         function drawMinimap() {
-            if (!worldData || isGenerating) return;
+            const roundedPlayerX = Math.round(player.x);
+            const roundedPlayerY = Math.round(player.y);
+
+            if (lastMinimapPlayerPos.x === roundedPlayerX && lastMinimapPlayerPos.y === roundedPlayerY) {
+                return; // No need to redraw if player hasn't moved to a new tile
+            }
+            lastMinimapPlayerPos.x = roundedPlayerX;
+            lastMinimapPlayerPos.y = roundedPlayerY;
 
             minimapCtx.clearRect(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);
             minimapCtx.imageSmoothingEnabled = false;
 
-            const minimapScale = 2; // Scale factor for the minimap
+            const minimapScale = 2;
 
-            const startX = Math.round(player.x) - Math.floor((MINIMAP_SIZE / minimapScale) / 2);
-            const startY = Math.round(player.y) - Math.floor((MINIMAP_SIZE / minimapScale) / 2);
+            const startX = roundedPlayerX - Math.floor((MINIMAP_SIZE / minimapScale) / 2);
+            const startY = roundedPlayerY - Math.floor((MINIMAP_SIZE / minimapScale) / 2);
 
             const sliders = {
                 heightScale: parseFloat(heightScaleSlider.value),
@@ -623,12 +696,6 @@
                     minimapCtx.fillRect(x, y, 1, 1);
                 }
             }
-
-            // Draw player on minimap
-            minimapCtx.fillStyle = 'red';
-            minimapCtx.beginPath();
-            minimapCtx.arc(MINIMAP_SIZE / 2, MINIMAP_SIZE / 2, 3, 0, 2 * Math.PI);
-            minimapCtx.fill();
         }
 
 
@@ -648,6 +715,7 @@
         const sunAngleSlider = document.getElementById('sunAngleSlider');
         const waterLevelSlider = document.getElementById('waterLevelSlider');
         const pauseMenu = document.getElementById('pauseMenu');
+        const craftingMenu = document.getElementById('craftingMenu');
         
         const heightScaleValueSpan = document.getElementById('heightScaleValue');
         const moistureScaleValueSpan = document.getElementById('moistureScaleValue');
@@ -670,6 +738,7 @@
         const speedModifierText = document.getElementById('speedModifierText');
         const posText = document.getElementById('posText');
         const biomeText = document.getElementById('biomeText');
+        const shelterStatus = document.getElementById('shelterStatus');
         const keysText = document.getElementById('keysText');
 
         const messageBox = document.getElementById('messageBox');
@@ -686,15 +755,14 @@
         const fpsGraphCtx = fpsGraphCanvas.getContext('2d');
         const fpsOverlay = document.getElementById('fpsOverlay');
 
+        const craftShelterButton = document.getElementById('craftShelterButton');
+        const shelterWoodCostSpan = document.getElementById('shelterWoodCost');
+        const shelterStoneCostSpan = document.getElementById('shelterStoneCost');
+
         const SHELTER_COST_WOOD = 10;
         const SHELTER_COST_STONE = 5;
 
-        let perlinHeight;
-        let perlinMoisture;
-        let perlinObject;
-        let perlinTemperature;
-        let perlinRiver;
-
+        let perlinHeight, perlinMoisture, perlinObject, perlinTemperature, perlinRiver;
         let isGenerating = false;
         let isGamePaused = false;
         let keys = {};
@@ -710,7 +778,7 @@
                 water: 0
             }
         };
-        let thirstRate = 0.05;
+        let thirstRate = 0.5; // Increased thirst rate for more challenge
 
         let lastFrameTime = 0;
         let fpsUpdateInterval = 100; // in milliseconds
@@ -738,27 +806,21 @@
         }
         
         function displayNextMessage() {
-            if (messages.length === 0) {
-                return;
-            }
+            if (messages.length === 0) return;
 
             const msg = messages[0];
             messageText.textContent = msg;
             messageText.classList.remove('hidden');
-            messageText.style.opacity = 1;
-
-            let currentOpacity = 1;
-            const fadeInterval = setInterval(() => {
-                currentOpacity -= 0.05;
-                if (currentOpacity <= 0) {
-                    clearInterval(fadeInterval);
+            messageText.classList.add('bubble-effect');
+            
+            setTimeout(() => {
+                messageText.classList.remove('bubble-effect');
+                setTimeout(() => {
                     messageText.classList.add('hidden');
                     messages.shift();
                     displayNextMessage();
-                } else {
-                    messageText.style.opacity = currentOpacity;
-                }
-            }, 50);
+                }, 2000); 
+            }, 500);
         }
 
         function updateHUD(currentBiome) {
@@ -771,14 +833,39 @@
             speedModifierText.textContent = `${getMovementSpeedModifier(currentBiome)}x`;
             posText.textContent = `${Math.round(player.x)}, ${Math.round(player.y)}`;
             biomeText.textContent = currentBiome;
-            
-            let pressedKeys = [];
-            for (const key in keys) {
-                if (keys[key]) {
-                    pressedKeys.push(key.toUpperCase());
-                }
+
+            if (player.hasShelter) {
+                shelterStatus.textContent = 'Yes';
+                shelterStatus.classList.remove('text-red-400');
+                shelterStatus.classList.add('text-green-400');
+            } else {
+                shelterStatus.textContent = 'No';
+                shelterStatus.classList.add('text-red-400');
+                shelterStatus.classList.remove('text-green-400');
             }
-            keysText.textContent = pressedKeys.join(', ');
+            
+            let pressedKeys = Object.keys(keys).filter(k => keys[k]).map(k => k.toUpperCase());
+            keysText.textContent = pressedKeys.join(', ') || '...';
+        }
+
+        function updateCraftingMenu() {
+            if (player.hasShelter) {
+                craftShelterButton.disabled = true;
+                craftShelterButton.textContent = 'Built';
+            } else {
+                const canCraft = player.resources.wood >= SHELTER_COST_WOOD && player.resources.stone >= SHELTER_COST_STONE;
+                craftShelterButton.disabled = !canCraft;
+                craftShelterButton.textContent = 'Craft';
+            }
+
+            shelterWoodCostSpan.textContent = `${SHELTER_COST_WOOD} 🪵`;
+            shelterStoneCostSpan.textContent = `${SHELTER_COST_STONE} 🪨`;
+            
+            shelterWoodCostSpan.classList.toggle('text-green-400', player.resources.wood >= SHELTER_COST_WOOD);
+            shelterWoodCostSpan.classList.toggle('text-red-400', player.resources.wood < SHELTER_COST_WOOD);
+
+            shelterStoneCostSpan.classList.toggle('text-green-400', player.resources.stone >= SHELTER_COST_STONE);
+            shelterStoneCostSpan.classList.toggle('text-red-400', player.resources.stone < SHELTER_COST_STONE);
         }
 
         function drawFPSGraph() {
@@ -811,27 +898,24 @@
 
         // GAME LOOP AND INPUT HANDLING
         function gameLoop(timestamp) {
-            if (isGamePaused) {
-                requestAnimationFrame(gameLoop);
-                return;
-            }
+            requestAnimationFrame(gameLoop);
+            if (isGamePaused) return;
 
-            const deltaTime = (timestamp - lastFrameTime) / 1000;
+            const deltaTime = (timestamp - lastFrameTime) / 1000 || 0;
             lastFrameTime = timestamp;
 
+            // --- FPS Counter ---
             if (timestamp - lastFpsUpdateTime > fpsUpdateInterval) {
                 const fps = 1 / deltaTime;
                 fpsHistory.push(fps);
-                if (fpsHistory.length > maxFpsHistory) {
-                    fpsHistory.shift();
-                }
+                if (fpsHistory.length > maxFpsHistory) fpsHistory.shift();
                 
                 minFps = Infinity;
                 maxFps = 0;
-                for(let i = 0; i < fpsHistory.length; i++){
-                    if (fpsHistory[i] < minFps) minFps = fpsHistory[i];
-                    if (fpsHistory[i] > maxFps) maxFps = fpsHistory[i];
-                }
+                fpsHistory.forEach(f => {
+                    if (f < minFps) minFps = f;
+                    if (f > maxFps) maxFps = f;
+                });
 
                 currentFpsText.textContent = Math.round(fps);
                 minFpsText.textContent = Math.round(minFps);
@@ -841,6 +925,7 @@
                 lastFpsUpdateTime = timestamp;
             }
 
+            // --- Game Logic ---
             if (!player.hasShelter) {
                 player.thirst -= thirstRate * deltaTime;
             }
@@ -848,25 +933,22 @@
             if (player.thirst <= 0) {
                 player.thirst = 0;
                 showMessage("Game Over! You died of thirst. Refresh to restart.");
+                isGamePaused = true;
             }
             
             const playerSpeed = parseFloat(playerSpeedSlider.value);
             
             let moveX = 0;
             let moveY = 0;
-            if (keys['w'] || keys['ArrowUp']) { moveY -= 1; }
-            if (keys['s'] || keys['ArrowDown']) { moveY += 1; }
-            if (keys['a'] || keys['ArrowLeft']) { moveX -= 1; }
-            if (keys['d'] || keys['ArrowRight']) { moveX += 1; }
+            if (keys['w'] || keys['arrowup']) { moveY -= 1; }
+            if (keys['s'] || keys['arrowdown']) { moveY += 1; }
+            if (keys['a'] || keys['arrowleft']) { moveX -= 1; }
+            if (keys['d'] || keys['arrowright']) { moveX += 1; }
             
-            const isMoving = moveX !== 0 || moveY !== 0;
-
-            if (isMoving) {
+            if (moveX !== 0 || moveY !== 0) {
                 const magnitude = Math.sqrt(moveX * moveX + moveY * moveY);
-                if (magnitude > 0) {
-                    moveX /= magnitude;
-                    moveY /= magnitude;
-                }
+                moveX /= magnitude;
+                moveY /= magnitude;
             }
             
             const currentBiome = getBiomeAtWorldCoords(Math.round(player.x), Math.round(player.y), perlinHeight, perlinMoisture, perlinTemperature, perlinRiver, {
@@ -878,42 +960,37 @@
             });
             const speedModifier = getMovementSpeedModifier(currentBiome);
             
-            if (speedModifier > 0) {
-                player.x += moveX * playerSpeed * deltaTime * 10 * speedModifier;
-                player.y += moveY * playerSpeed * deltaTime * 10 * speedModifier;
-            }
+            player.x += moveX * playerSpeed * deltaTime * 10 * speedModifier;
+            player.y += moveY * playerSpeed * deltaTime * 10 * speedModifier;
 
-            // Update emoji and direction
             if (currentBiome.includes('Water') || currentBiome === 'river') {
                 playerEmojiSpan.textContent = '🏊';
             } else {
                 playerEmojiSpan.textContent = '🚶';
             }
 
-            if (moveX > 0) {
-                playerEmojiSpan.style.transform = 'scaleX(-1)';
-            } else if (moveX < 0) {
-                playerEmojiSpan.style.transform = 'scaleX(1)';
-            }
+            if (moveX > 0) playerEmojiSpan.style.transform = 'scaleX(-1)';
+            else if (moveX < 0) playerEmojiSpan.style.transform = 'scaleX(1)';
             
-            generateWorldData(player.x, player.y);
+            // --- Drawing ---
             drawWorld();
             drawMinimap();
             updateHUD(currentBiome);
-            requestAnimationFrame(gameLoop);
         }
         
         // EVENT HANDLERS
         function handleGenerate() {
             showLoading();
-            generatePerlinMaps();
-            generateWorldData(player.x, player.y);
-            drawWorld();
-            drawMinimap();
-            hideLoading();
-            minFps = Infinity;
-            maxFps = 0;
-            fpsHistory.length = 0;
+            setTimeout(() => { // Allow UI to update before blocking
+                chunkCache.clear();
+                generatePerlinMaps();
+                drawWorld();
+                drawMinimap();
+                hideLoading();
+                minFps = Infinity;
+                maxFps = 0;
+                fpsHistory.length = 0;
+            }, 10);
         }
         
         function handleLoadAndResize() {
@@ -922,8 +999,7 @@
             fpsGraphCanvas.width = fpsGraphCanvas.clientWidth;
             fpsGraphCanvas.height = fpsGraphCanvas.clientHeight;
             
-            if (!isGenerating) {
-                generateWorldData(player.x, player.y);
+            if (!isGenerating && perlinHeight) {
                 drawWorld();
                 drawMinimap();
             }
@@ -931,50 +1007,59 @@
 
         window.addEventListener('resize', handleLoadAndResize);
         
-        seedInput.addEventListener('input', handleGenerate);
-        heightScaleSlider.addEventListener('input', () => {
-            heightScaleValueSpan.textContent = heightScaleSlider.value;
-            handleGenerate();
+        ['input', 'change'].forEach(evt => {
+            seedInput.addEventListener(evt, handleGenerate);
+            heightScaleSlider.addEventListener(evt, () => {
+                heightScaleValueSpan.textContent = heightScaleSlider.value;
+                handleGenerate();
+            });
+            moistureScaleSlider.addEventListener(evt, () => {
+                moistureScaleValueSpan.textContent = moistureScaleSlider.value;
+                handleGenerate();
+            });
+            octavesSlider.addEventListener(evt, () => {
+                octavesValueSpan.textContent = octavesSlider.value;
+                handleGenerate();
+            });
+            persistenceSlider.addEventListener(evt, () => {
+                persistenceValueSpan.textContent = persistenceSlider.value;
+                handleGenerate();
+            });
+            waterLevelSlider.addEventListener(evt, () => {
+                waterLevelValueSpan.textContent = waterLevelSlider.value;
+                handleGenerate();
+            });
         });
-        moistureScaleSlider.addEventListener('input', () => {
-            moistureScaleValueSpan.textContent = moistureScaleSlider.value;
-            handleGenerate();
-        });
+
         pixelScaleSlider.addEventListener('input', () => {
             pixelScaleValueSpan.textContent = pixelScaleSlider.value;
-            drawWorld();
-            drawMinimap();
-        });
-        octavesSlider.addEventListener('input', () => {
-            octavesValueSpan.textContent = octavesSlider.value;
-            handleGenerate();
-        });
-        persistenceSlider.addEventListener('input', () => {
-            persistenceValueSpan.textContent = persistenceSlider.value;
-            handleGenerate();
+            if (!isGenerating) drawWorld();
         });
         playerSpeedSlider.addEventListener('input', () => {
             playerSpeedValueSpan.textContent = playerSpeedSlider.value;
         });
         sunAngleSlider.addEventListener('input', () => {
             sunAngleValueSpan.textContent = sunAngleSlider.value;
-            generateWorldData(player.x, player.y);
-            drawWorld();
+            if (!isGenerating) {
+                chunkCache.clear();
+                drawWorld();
+            }
         });
-        waterLevelSlider.addEventListener('input', () => {
-            waterLevelValueSpan.textContent = waterLevelSlider.value;
-            handleGenerate();
-        });
-        
         forestTreeDensitySlider.addEventListener('input', () => {
             forestTreeDensityValueSpan.textContent = forestTreeDensitySlider.value;
-            drawWorld();
+            if (!isGenerating) {
+                chunkCache.clear();
+                drawWorld();
+            }
         });
-        
         grasslandTreeDensitySlider.addEventListener('input', () => {
             grasslandTreeDensityValueSpan.textContent = grasslandTreeDensitySlider.value;
-            drawWorld();
+            if (!isGenerating) {
+                chunkCache.clear();
+                drawWorld();
+            }
         });
+
         
         canvas.addEventListener('wheel', (e) => {
             e.preventDefault();
@@ -983,20 +1068,30 @@
             if (newPixelScale > 24) newPixelScale = 24;
             pixelScaleSlider.value = newPixelScale;
             pixelScaleValueSpan.textContent = newPixelScale;
-            drawWorld();
-            drawMinimap();
+            if (!isGenerating) drawWorld();
         });
+
+        function togglePause(forceState) {
+            isGamePaused = forceState !== undefined ? forceState : !isGamePaused;
+            const anyMenuOpen = !pauseMenu.classList.contains('hidden') || !craftingMenu.classList.contains('hidden');
+            isGamePaused = anyMenuOpen;
+            document.body.style.cursor = isGamePaused ? 'default' : `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='40' height='48' viewport='0 0 100 100' style='font-size:24px;'><text y='50%'>⛏️</text></svg>") 16 24, auto`;
+        }
 
         document.addEventListener('keydown', (e) => {
             if (e.key === "Escape") {
-                isGamePaused = !isGamePaused;
+                craftingMenu.classList.add('hidden');
                 pauseMenu.classList.toggle('hidden');
-                document.body.style.cursor = isGamePaused ? 'default' : 'url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'40\' height=\'48\' viewport=\'0 0 100 100\' style=\'font-size:24px;\'><text y=\'50%\'>⛏️</text></svg>") 16 24, auto';
-                return;
-            }
-            if (e.key === '`' || e.key === '~') {
+                togglePause();
+            } else if (e.key === 'c' || e.key === 'C') {
+                pauseMenu.classList.add('hidden');
+                craftingMenu.classList.toggle('hidden');
+                if (!craftingMenu.classList.contains('hidden')) {
+                    updateCraftingMenu();
+                }
+                togglePause();
+            } else if (e.key === '`' || e.key === '~') {
                 fpsOverlay.classList.toggle('hidden');
-                return;
             }
             keys[e.key.toLowerCase()] = true;
         });
@@ -1005,21 +1100,18 @@
         });
 
         canvas.addEventListener('click', (e) => {
-            if (isGenerating || isGamePaused || player.thirst <= 0 || !perlinHeight) {
-                return;
-            }
+            if (isGenerating || isGamePaused || player.thirst <= 0 || !perlinHeight) return;
 
             const pixelScale = parseInt(pixelScaleSlider.value);
             const rect = canvas.getBoundingClientRect();
-            
             const viewX = Math.floor(e.clientX - rect.left);
             const viewY = Math.floor(e.clientY - rect.top);
-
-            const startX = Math.round(player.x) - Math.floor((viewport.clientWidth / 2) / pixelScale);
-            const startY = Math.round(player.y) - Math.floor((viewport.clientHeight / 2) / pixelScale);
-            
-            const worldX = startX + Math.floor(viewX / pixelScale);
-            const worldY = startY + Math.floor(viewY / pixelScale);
+            const viewTilesX = viewport.clientWidth / pixelScale;
+            const viewTilesY = viewport.clientHeight / pixelScale;
+            const startTileX = player.x - viewTilesX / 2;
+            const startTileY = player.y - viewTilesY / 2;
+            const worldX = Math.floor(startTileX + viewX / pixelScale);
+            const worldY = Math.floor(startTileY + viewY / pixelScale);
             
             const biome = getBiomeAtWorldCoords(worldX, worldY, perlinHeight, perlinMoisture, perlinTemperature, perlinRiver, {
                 heightScale: parseFloat(heightScaleSlider.value),
@@ -1028,20 +1120,38 @@
                 persistence: parseFloat(persistenceSlider.value),
                 waterLevel: parseFloat(waterLevelSlider.value)
             });
+            
+            const objectValue = perlinObject.noise(worldX, worldY);
+            const sliders = { forestTreeDensity: parseFloat(forestTreeDensitySlider.value), grasslandTreeDensity: parseFloat(grasslandTreeDensitySlider.value) };
+            const treeThreshold = getTreeThreshold(biome, sliders);
 
-            if (biome.includes('Water') || biome === 'river') {
-                player.resources.water += 1;
-                showMessage("Found water! 💧");
-            } else if (biome.includes('forest') || biome.includes('jungle') || biome.includes('taiga')) {
+            if (objectValue > (1.0 - treeThreshold) && !biome.includes('Water') && biome !== 'river') {
                 player.resources.wood += 1;
-                showMessage("Found wood! 🪵");
+                showMessage("Gathered wood! 🪵");
+            } else if (biome.includes('Water') || biome === 'river') {
+                 player.resources.water += 1;
+                 player.thirst = Math.min(100, player.thirst + 10);
+                 showMessage("Collected water & drank! 💧");
             } else if (biome.includes('mountain') || biome.includes('spikes') || biome === 'desertHills' || biome === 'badlandsHills') {
                 player.resources.stone += 1;
-                showMessage("Found stone! 🪨");
+                showMessage("Gathered stone! 🪨");
             } else {
-                showMessage("There is nothing to gather here.");
+                showMessage("Nothing to gather here.");
             }
             updateHUD(biome);
+        });
+
+        craftShelterButton.addEventListener('click', () => {
+            if (player.hasShelter || player.resources.wood < SHELTER_COST_WOOD || player.resources.stone < SHELTER_COST_STONE) return;
+            
+            player.resources.wood -= SHELTER_COST_WOOD;
+            player.resources.stone -= SHELTER_COST_STONE;
+            player.hasShelter = true;
+            
+            showMessage('Shelter built! 🛖 You no longer get thirsty.');
+            
+            craftingMenu.classList.add('hidden');
+            togglePause(false);
         });
 
         window.onload = () => {
@@ -1053,3 +1163,4 @@
     </script>
 </body>
 </html>
+
