@@ -762,9 +762,9 @@
                                  const renderY = objScreenY + pixelScale / 2 + (obj.offsetY || 0) * pixelScale;
                                  
                                  ctx.save();
-                                 ctx.textBaseline = 'bottom';
-                                 ctx.translate(renderX, renderY + pixelScale / 2);
-                                 ctx.scale(1, obj.height);
+                                 ctx.textBaseline = 'middle';
+                                 ctx.translate(renderX, renderY);
+                                 ctx.scale(1, Math.abs(obj.height));
                                  ctx.fillText(obj.emoji, 0, 0);
                                  ctx.restore();
                              } else if (obj.type === 'fish') {
