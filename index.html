@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Procedural Crafting Explorer v2</title>
+    <title>Procedural World Explorer</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
     <style>
         body {
             font-family: 'Inter', sans-serif;
-            cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='40' height='48' viewport='0 0 100 100' style='font-size:24px;'><text y='50%'>🖐️</text></svg>") 16 24, auto;
+            cursor: crosshair;
             margin: 0;
             overflow: hidden;
             display: flex;
@@ -64,7 +64,7 @@
         #mobileControls {
             pointer-events: none; /* Let clicks pass through the container */
         }
-        #joystick, #actionButton {
+        #joystick {
             pointer-events: auto; /* But not the controls themselves */
         }
         
@@ -73,6 +73,43 @@
         }
         #timeSliderContainer svg * {
             pointer-events: none; /* Allow events to be captured by the container */
+        }
+        /* For Webkit-based browsers (Chrome, Safari) */
+        .controls::-webkit-scrollbar {
+            width: 8px;
+        }
+        .controls::-webkit-scrollbar-track {
+            background: #2d3748; /* bg-gray-700 */
+        }
+        .controls::-webkit-scrollbar-thumb {
+            background: #4a5568; /* bg-gray-600 */
+            border-radius: 4px;
+        }
+
+        /* Collapsible Panels */
+        .collapsible-hud.collapsed {
+            width: 48px;
+            padding-top: 1rem;
+            padding-bottom: 1rem;
+        }
+        .collapsible-hud.collapsed .controls, .collapsible-hud.collapsed .controls-footer {
+            display: none;
+        }
+        .collapsible-hud.collapsed .title-bar {
+            flex-direction: column-reverse;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0;
+        }
+        .collapsible-hud.collapsed h3 {
+            writing-mode: vertical-rl;
+            transform: rotate(180deg);
+            margin: 0;
+            padding: 0;
+            line-height: 1;
+        }
+        .collapsible-hud.collapsed .toggle-icon {
+            transform: rotate(180deg);
         }
     </style>
 </head>
@@ -89,23 +126,11 @@
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
         </div>
-        <!-- In-game HUD -->
         <div class="absolute top-4 left-4 p-3 bg-gray-800 bg-opacity-75 rounded-lg shadow-md z-20 max-w-xs">
             <div class="flex flex-col gap-2 text-sm font-semibold">
-                <div class="flex justify-between items-center">
-                    <span>💧 Thirst:</span>
-                    <span id="thirstText">100%</span>
-                </div>
-                <div class="w-full h-2 bg-gray-900 rounded-full overflow-hidden">
-                    <div id="thirstFill" class="h-full bg-blue-500 transition-all duration-200" style="width: 100%;"></div>
-                </div>
                 <div class="flex justify-between items-center text-sm font-semibold">
                     <span>⚡ Speed:</span>
                     <span id="speedModifierText">1x</span>
-                </div>
-                 <div class="flex justify-between items-center text-sm font-semibold pt-1 border-t border-gray-700 mt-1">
-                    <span>🛠️ Tool:</span>
-                    <span id="toolText">Hand 🖐️</span>
                 </div>
                 <div class="flex flex-col mt-2">
                     <div class="flex justify-between items-center">
@@ -115,10 +140,6 @@
                     <div class="flex justify-between items-center">
                         <span>🌲 Biome:</span>
                         <span id="biomeText">...</span>
-                    </div>
-                     <div class="flex justify-between items-center">
-                        <span>🛖 Shelter:</span>
-                        <span id="shelterStatus" class="text-red-400">No</span>
                     </div>
                      <div class="flex justify-between items-center mt-1">
                         <span>☀️ Time:</span>
@@ -144,33 +165,22 @@
                          <span>Min/Max:</span>
                          <span class="font-mono"><span id="minFps">--</span>/<span id="maxFps">--</span></span>
                     </div>
+                    <div class="flex justify-between items-center text-xs text-gray-400 pt-1 border-t border-gray-700 mt-1">
+                        <span>'H' - Contours:</span>
+                        <span id="contourStatus" class="font-semibold text-red-400">Off</span>
+                   </div>
                 </div>
             </div>
         </div>
         <div class="absolute top-4 right-4 p-3 bg-gray-800 bg-opacity-75 rounded-lg shadow-md z-20 max-w-xs">
-            <div class="flex flex-col gap-2 text-sm font-semibold">
-                <div class="flex justify-between items-center">
-                    <span>🪵 Wood:</span>
-                    <span id="woodCount">0</span>
-                </div>
-                <div class="flex justify-between items-center text-sm font-semibold">
-                    <span>🪨 Stone:</span>
-                    <span id="stoneCount">0</span>
-                </div>
-                <div class="flex justify-between items-center text-sm font-semibold">
-                    <span>💧 Water:</span>
-                    <span id="waterCount">0</span>
-                </div>
-                <div id="fishCounts" class="flex flex-col gap-1 mt-2 border-t border-gray-700 pt-2">
-                    <!-- Fish counts will be dynamically inserted here -->
-                </div>
+             <h3 class="text-lg font-bold text-center mb-2 text-white">Fish Log</h3>
+            <div id="fishLog" class="flex flex-col gap-1 mt-2 border-t border-gray-700 pt-2">
             </div>
         </div>
         <div id="messageBox" class="absolute top-24 right-4 flex justify-center z-40">
             <div id="messageText" class="p-3 bg-gray-700 text-white rounded-lg shadow-md hidden text-center w-auto"></div>
         </div>
         
-        <!-- Minimap -->
         <div class="absolute bottom-4 left-4 z-40">
             <div class="w-48 h-48 bg-gray-800 border-2 border-gray-600 rounded-lg overflow-hidden relative">
                 <canvas id="minimapCanvas" class="w-full h-full pixelated"></canvas>
@@ -178,95 +188,121 @@
             </div>
         </div>
 
-        <!-- Circular Time Slider -->
         <div id="timeSliderContainer" class="absolute bottom-4 right-4 z-40 w-32 h-32">
             <svg viewBox="0 0 100 100">
                 <circle cx="50" cy="50" r="40" class="stroke-gray-700" stroke-width="8" fill="rgba(31, 41, 55, 0.7)"></circle>
                 <path id="timeSliderProgress" class="stroke-yellow-400" stroke-width="8" fill="none" stroke-linecap="round"></path>
-                <text x="50" y="15" text-anchor="middle" font-size="14">🕛</text> <!-- Midnight -->
-                <text x="88" y="55" text-anchor="middle" font-size="14">☀️</text> <!-- Sunrise (approx) -->
-                <text x="50" y="95" text-anchor="middle" font-size="14">🕕</text> <!-- Noon -->
-                <text x="12" y="55" text-anchor="middle" font-size="14">🌙</text> <!-- Sunset (approx) -->
-                <circle id="timeSliderHandle" cx="50" cy="10" r="6" class="fill-white"></circle>
+                <text x="50" y="15" text-anchor="middle" font-size="14">🕛</text> <text x="88" y="55" text-anchor="middle" font-size="14">☀️</text> <text x="50" y="95" text-anchor="middle" font-size="14">🕕</text> <text x="12" y="55" text-anchor="middle" font-size="14">🌙</text> <circle id="timeSliderHandle" cx="50" cy="10" r="6" class="fill-white"></circle>
             </svg>
         </div>
 
+        <div id="settingsHud" class="absolute top-1/2 right-4 -translate-y-1/2 bg-gray-800 bg-opacity-90 p-4 rounded-lg shadow-lg z-40 w-64 max-h-[80vh] overflow-y-auto transition-all duration-300 collapsed collapsible-hud">
+            <div class="flex justify-between items-center mb-4 title-bar">
+                <h3 class="text-lg font-bold text-white transition-all duration-300">World Settings</h3>
+                <button id="toggleSettings" class="text-white p-1 rounded-full hover:bg-gray-700">
+                    <svg class="w-6 h-6 transition-transform duration-300 toggle-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                </button>
+            </div>
+            <div class="controls w-full grid grid-cols-1 gap-4 pr-2">
+                <div class="flex flex-col items-center">
+                    <label for="seedInput" class="text-sm font-semibold mb-2 text-gray-300">Seed</label>
+                    <input type="text" id="seedInput" placeholder="Enter a number" class="w-full text-center bg-gray-700 rounded-lg py-2 px-3 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 text-white">
+                </div>
+                <div class="flex flex-col items-center">
+                    <label for="heightScaleSlider" class="text-sm font-semibold mb-2 text-gray-300">Height Scale: <span id="heightScaleValue">50</span></label>
+                    <input type="range" id="heightScaleSlider" min="20" max="150" value="50" class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600">
+                </div>
+                <div class="flex flex-col items-center">
+                    <label for="moistureScaleSlider" class="text-sm font-semibold mb-2 text-gray-300">Moisture Scale: <span id="moistureScaleValue">80</span></label>
+                    <input type="range" id="moistureScaleSlider" min="20" max="150" value="80" class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600">
+                </div>
+                <div class="flex flex-col items-center">
+                    <label for="climateContrastSlider" class="text-sm font-semibold mb-2 text-gray-300">Climate Contrast: <span id="climateContrastValue">1.5</span></label>
+                    <input type="range" id="climateContrastSlider" min="1.0" max="3.0" step="0.1" value="1.5" class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600">
+                </div>
+                <div class="flex flex-col items-center">
+                    <label for="pixelScaleSlider" class="text-sm font-semibold mb-2 text-gray-300">Pixel Scale: <span id="pixelScaleValue">12</span></label>
+                    <input type="range" id="pixelScaleSlider" min="1" max="24" value="12" class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600">
+                </div>
+                <div class="flex flex-col items-center">
+                    <label for="persistenceSlider" class="text-sm font-semibold mb-2 text-gray-300">Persistence: <span id="persistenceValue">0.5</span></label>
+                    <input type="range" id="persistenceSlider" min="0.1" max="1" step="0.05" value="0.5" class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600">
+                </div>
+                <div class="flex flex-col items-center">
+                    <label for="playerSpeedSlider" class="text-sm font-semibold mb-2 text-gray-300">Player Speed: <span id="playerSpeedValue">2</span></label>
+                    <input type="range" id="playerSpeedSlider" min="0.5" max="5" step="0.5" value="2" class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600">
+                </div>
+                <div class="flex flex-col items-center">
+                    <label for="waterLevelSlider" class="text-sm font-semibold mb-2 text-gray-300">Water Level: <span id="waterLevelValue">0.45</span></label>
+                    <input type="range" id="waterLevelSlider" min="0.0" max="1.0" step="0.05" value="0.45" class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600">
+                </div>
+                <div class="flex flex-col items-center">
+                    <label for="treeDensitySlider" class="text-sm font-semibold mb-2 text-gray-300">Tree Density: <span id="treeDensityValue">1.0</span>x</label>
+                    <input type="range" id="treeDensitySlider" min="0.2" max="2.0" step="0.1" value="1.0" class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600">
+                </div>
+                <div class="flex flex-col items-center">
+                    <label for="fishDensitySlider" class="text-sm font-semibold mb-2 text-gray-300">Fish Density: <span id="fishDensityValue">1.0</span>x</label>
+                    <input type="range" id="fishDensitySlider" min="0.0" max="3.0" step="0.1" value="1.0" class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600">
+                </div>
+                <div class="flex flex-col items-center">
+                    <label for="mapScaleSlider" class="text-sm font-semibold mb-2 text-gray-300">Map Scale: <span id="mapScaleValue">0.10</span></label>
+                    <input type="range" id="mapScaleSlider" min="0.1" max="2.0" step="0.05" value="0.1" class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600">
+                </div>
+            </div>
+            <p class="text-xs text-center text-gray-400 mt-4 controls-footer">Changes are applied live.</p>
+        </div>
 
-        <!-- Mobile Controls -->
+        <div id="legendHud" class="absolute bottom-56 left-4 bg-gray-800 bg-opacity-90 p-4 rounded-lg shadow-lg z-30 w-64 max-h-[40vh] overflow-y-auto transition-all duration-300 collapsed collapsible-hud">
+            <div class="flex justify-between items-center mb-4 title-bar">
+                <h3 class="text-lg font-bold text-white transition-all duration-300">Biome Legend</h3>
+                <button id="toggleLegend" class="text-white p-1 rounded-full hover:bg-gray-700">
+                    <svg class="w-6 h-6 transition-transform duration-300 toggle-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                </button>
+            </div>
+            <div id="legendEntries" class="controls w-full flex flex-col gap-2 pr-2 text-sm">
+                <!-- Entries will be generated by JS -->
+            </div>
+        </div>
+
         <div id="mobileControls" class="fixed bottom-0 left-0 right-0 p-8 flex justify-between items-end z-40 hidden">
             <div id="joystick" class="w-32 h-32 bg-gray-500 bg-opacity-30 rounded-full relative">
                 <div id="joystickHandle" class="w-16 h-16 bg-gray-400 bg-opacity-50 rounded-full absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"></div>
             </div>
-            <button id="actionButton" class="w-20 h-20 bg-blue-500 bg-opacity-50 rounded-full flex items-center justify-center text-4xl active:bg-blue-400">
-                🖐️
-            </button>
         </div>
-    </div>
-
-    <!-- New Settings Menu -->
-    <div id="settingsMenu" class="absolute top-1/2 right-4 -translate-y-1/2 bg-gray-800 bg-opacity-90 p-4 rounded-lg shadow-lg z-30 hidden w-64">
-        <h3 class="text-lg font-bold text-center mb-4 text-white">World Settings</h3>
-        <div class="controls w-full grid grid-cols-1 gap-4">
-            <div class="flex flex-col items-center">
-                <label for="seedInput" class="text-sm font-semibold mb-2 text-gray-300">Seed</label>
-                <input type="text" id="seedInput" placeholder="Enter a number" value="12345" class="w-full text-center bg-gray-700 rounded-lg py-2 px-3 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 text-white">
-            </div>
-            <div class="flex flex-col items-center">
-                <label for="heightScaleSlider" class="text-sm font-semibold mb-2 text-gray-300">Height Scale: <span id="heightScaleValue">50</span></label>
-                <input type="range" id="heightScaleSlider" min="20" max="150" value="50" class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600">
-            </div>
-            <div class="flex flex-col items-center">
-                <label for="moistureScaleSlider" class="text-sm font-semibold mb-2 text-gray-300">Moisture Scale: <span id="moistureScaleValue">80</span></label>
-                <input type="range" id="moistureScaleSlider" min="20" max="150" value="80" class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600">
-            </div>
-            <div class="flex flex-col items-center">
-                <label for="pixelScaleSlider" class="text-sm font-semibold mb-2 text-gray-300">Pixel Scale: <span id="pixelScaleValue">12</span></label>
-                <input type="range" id="pixelScaleSlider" min="1" max="24" value="12" class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600">
-            </div>
-            <div class="flex flex-col items-center">
-                <label for="persistenceSlider" class="text-sm font-semibold mb-2 text-gray-300">Persistence: <span id="persistenceValue">0.5</span></label>
-                <input type="range" id="persistenceSlider" min="0.1" max="1" step="0.05" value="0.5" class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600">
-            </div>
-            <div class="flex flex-col items-center">
-                <label for="playerSpeedSlider" class="text-sm font-semibold mb-2 text-gray-300">Player Speed: <span id="playerSpeedValue">2</span></label>
-                <input type="range" id="playerSpeedSlider" min="0.5" max="5" step="0.5" value="2" class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600">
-            </div>
-            <div class="flex flex-col items-center">
-                <label for="waterLevelSlider" class="text-sm font-semibold mb-2 text-gray-300">Water Level: <span id="waterLevelValue">0.45</span></label>
-                <input type="range" id="waterLevelSlider" min="0.0" max="1.0" step="0.05" value="0.45" class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600">
-            </div>
-            <div class="flex flex-col items-center">
-                <label for="treeDensitySlider" class="text-sm font-semibold mb-2 text-gray-300">Tree Density: <span id="treeDensityValue">1.0</span>x</label>
-                <input type="range" id="treeDensitySlider" min="0.2" max="2.0" step="0.1" value="1.0" class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600">
-            </div>
-            <div class="flex flex-col items-center">
-                <label for="fishDensitySlider" class="text-sm font-semibold mb-2 text-gray-300">Fish Density: <span id="fishDensityValue">1.0</span>x</label>
-                <input type="range" id="fishDensitySlider" min="0.0" max="3.0" step="0.1" value="1.0" class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600">
-            </div>
-        </div>
-        <p class="text-xs text-center text-gray-400 mt-4">Press <kbd class="px-1 bg-gray-700 rounded-md">Esc</kbd> to close.</p>
     </div>
     
-    <!-- Crafting Menu -->
-    <div id="craftingMenu" class="fixed inset-0 bg-gray-900 bg-opacity-80 flex items-center justify-center z-50 hidden p-4">
-        <div class="bg-gray-800 p-6 sm:p-8 rounded-xl shadow-lg w-full max-w-2xl flex flex-col items-center gap-6">
-            <h2 class="text-2xl sm:text-3xl font-bold text-white text-center">Crafting</h2>
-            <p class="text-sm text-gray-400">Press <kbd class="px-2 py-1 text-xs font-semibold bg-gray-700 rounded-md border border-gray-600">C</kbd> to close.</p>
-            <div id="craftingRecipes" class="w-full space-y-4 max-h-96 overflow-y-auto">
-                <!-- Recipes will be dynamically inserted here -->
-            </div>
-        </div>
-    </div>
-
     <script>
         // =================================================================================
         // CORE NOISE AND MATH FUNCTIONS
         // =================================================================================
+        const TREE_TYPES = {
+            'oak': { emoji: '🌳', biomes: ['forest', 'forestHills', 'plain'], minHeight: 1, maxHeight: 4 },
+            'pine': { emoji: '🌲', biomes: ['taiga', 'taigaHills', 'taigaMountains', 'snowyTaiga', 'snowyTaigaHills', 'snowyTaigaMountains', 'mountain'], minHeight: 2, maxHeight: 6 },
+            'jungle': { emoji: '🌴', biomes: ['jungle', 'jungleHills', 'beach'], minHeight: 3, maxHeight: 7 },
+            'acacia': { emoji: '🌳', biomes: ['savanna', 'savannaPlateau'], minHeight: 2, maxHeight: 5 }, // Using oak emoji as a stand-in
+            'swamp': { emoji: '🌳', biomes: ['swamp', 'swampHills'], minHeight: 1, maxHeight: 3 } // Using oak emoji as a stand-in
+        };
+
         const FISH_TYPES = {
-            'cod': { emoji: '🐟', biomes: ['deepWater', 'shallowWater', 'river'], rarity: 0.08 },
-            'salmon': { emoji: '🐠', biomes: ['river', 'shallowWater'], rarity: 0.05 },
-            'pufferfish': { emoji: '🐡', biomes: ['jungle', 'swamp', 'shallowWater'], rarity: 0.03 },
-            'arctic char': { emoji: '🐟', biomes: ['frozenDeepWater', 'frozenShallowWater'], rarity: 0.07 }
+            // Common
+            'cod': { emoji: '🐟', biomes: ['deepWater', 'shallowWater'], rarity: 0.5 },
+            'salmon': { emoji: '🐠', biomes: ['river', 'shallowWater'], rarity: 0.4 },
+             // Temperate
+            'trout': { emoji: '🐟', biomes: ['river'], rarity: 0.3 },
+            'mackerel': { emoji: '🎣', biomes: ['shallowWater'], rarity: 0.2 },
+            // Tropical
+            'clownfish': { emoji: '🐠', biomes: ['shallowWater', 'jungle'], rarity: 0.2 },
+            'pufferfish': { emoji: '🐡', biomes: ['jungle', 'swamp', 'shallowWater'], rarity: 0.15 },
+            'piranha': { emoji: '🐟', biomes: ['jungle', 'river', 'swamp'], rarity: 0.1 },
+            // Cold
+            'arctic char': { emoji: '🐟', biomes: ['frozenDeepWater', 'frozenShallowWater'], rarity: 0.4 },
+            'icefish': { emoji: '🧊', biomes: ['frozenDeepWater'], rarity: 0.2 },
+            // Swamp/Murky
+            'catfish': { emoji: '🎣', biomes: ['swamp', 'river'], rarity: 0.3 },
+            // Deep Ocean
+            'tuna': { emoji: '🐟', biomes: ['deepWater'], rarity: 0.2 },
+            'swordfish': { emoji: '🗡️', biomes: ['deepWater'], rarity: 0.1 },
+            'anglerfish': { emoji: '💡', biomes: ['deepWater'], rarity: 0.05 },
         };
 
         function seededRandom(seed) {
@@ -296,7 +332,7 @@
                 const A = this.p[X] + Y, AA = this.p[A], AB = this.p[A + 1];
                 const B = this.p[X + 1] + Y, BA = this.p[B], BB = this.p[B + 1];
                 const res = this.lerp(v, this.lerp(u, this.grad(this.p[AA], x, y), this.grad(this.p[BA], x - 1, y)),
-                                         this.lerp(u, this.grad(this.p[AB], x, y - 1), this.grad(this.p[BB], x - 1, y - 1)));
+                                      this.lerp(u, this.grad(this.p[AB], x, y - 1), this.grad(this.p[BB], x - 1, y - 1)));
                 return (res + 1.0) / 2.0;
             }
             fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
@@ -308,6 +344,76 @@
             }
         }
         
+        // =================================================================================
+        // POISSON DISK SAMPLING FOR OBJECT PLACEMENT
+        // =================================================================================
+        const PoissonDisk = (() => {
+            const GRID_CELL_SIZE = 4;
+            const INV_CELL_SIZE = 1 / GRID_CELL_SIZE;
+            const candidateCache = new Map();
+
+            function getCandidate(cx, cy, perlin, sliders, seed, getRadiusFn) {
+                const key = `${cx},${cy},${seed},${getRadiusFn.name},${sliders.treeDensityMultiplier},${sliders.fishDensityMultiplier}`;
+                if (candidateCache.has(key)) return candidateCache.get(key);
+
+                const cellRandom = seededRandom(cx * 9301 + cy * 49297 + seed);
+                const pointX = (cx + cellRandom()) * GRID_CELL_SIZE;
+                const pointY = (cy + cellRandom()) * GRID_CELL_SIZE;
+                const biome = getBiomeAtWorldCoords(Math.round(pointX), Math.round(pointY), perlin, sliders);
+                const radius = getRadiusFn(biome, sliders);
+
+                const candidate = { x: pointX, y: pointY, r: radius, biome: biome };
+                candidateCache.set(key, candidate);
+                return candidate;
+            }
+
+            function generatePointsForChunk(chunkX, chunkY, perlin, sliders, seed, getRadiusFn, isValidBiomeFn, createObjectFn) {
+                const points = [];
+                const startX = chunkX * CHUNK_SIZE, startY = chunkY * CHUNK_SIZE;
+                const endX = startX + CHUNK_SIZE, endY = startY + CHUNK_SIZE;
+
+                const startCellX = Math.floor(startX * INV_CELL_SIZE), endCellX = Math.ceil(endX * INV_CELL_SIZE);
+                const startCellY = Math.floor(startY * INV_CELL_SIZE), endCellY = Math.ceil(endY * INV_CELL_SIZE);
+
+                for (let cy = startCellY; cy < endCellY; cy++) {
+                    for (let cx = startCellX; cx < endCellX; cx++) {
+                        const candidate = getCandidate(cx, cy, perlin, sliders, seed, getRadiusFn);
+                        
+                        if (candidate.r === 0 || !isValidBiomeFn(candidate.biome) || candidate.x < startX || candidate.x >= endX || candidate.y < startY || candidate.y >= endY) continue;
+
+                        let isValid = true;
+                        const checkCellRadius = Math.ceil(candidate.r * INV_CELL_SIZE);
+
+                        for (let j = -checkCellRadius; j <= checkCellRadius; j++) {
+                            for (let i = -checkCellRadius; i <= checkCellRadius; i++) {
+                                if (i === 0 && j === 0) continue;
+                                const neighbor = getCandidate(cx + i, cy + j, perlin, sliders, seed, getRadiusFn);
+                                if (neighbor.r === 0 || !isValidBiomeFn(neighbor.biome)) continue;
+
+                                const distSq = (candidate.x - neighbor.x) ** 2 + (candidate.y - neighbor.y) ** 2;
+                                if (distSq < neighbor.r * neighbor.r) {
+                                    if (candidate.r < neighbor.r || (candidate.r === neighbor.r && (candidate.x > neighbor.x || (candidate.x === neighbor.x && candidate.y > neighbor.y)))) {
+                                        isValid = false; break;
+                                    }
+                                }
+                            }
+                            if (!isValid) break;
+                        }
+
+                        if (isValid) {
+                            points.push(createObjectFn(candidate));
+                        }
+                    }
+                }
+                return points;
+            }
+            
+            function clearCache() { candidateCache.clear(); }
+
+            return { generatePointsForChunk, clearCache };
+        })();
+
+
         // =================================================================================
         // BIOME AND WORLD GENERATION
         // =================================================================================
@@ -324,11 +430,15 @@
             'mountain': [96, 96, 96], 'snowyTundra': [255, 255, 255], 'snowyMountains': [160, 160, 160],
             'iceSpikes': [180, 220, 220], 'river': [37, 174, 255]
         };
+        
+        function remapNoise(value, exponent) {
+            return Math.pow(value, exponent);
+        }
 
-        function getOctaveNoise(x, y, perlin, scale, persistence, initialAmplitude = 1) {
+        function getOctaveNoise(x, y, perlin, scale, persistence, initialAmplitude = 1, mapScale = 1) {
             let total = 0, amplitude = initialAmplitude, frequency = 1, maxAmplitude = 0;
             for (let i = 0; i < 16; i++) { // Using 16 octaves to match Java code
-                total += perlin.noise(x / scale * frequency, y / scale * frequency) * amplitude;
+                total += perlin.noise((x * mapScale) / scale * frequency, (y * mapScale) / scale * frequency) * amplitude;
                 maxAmplitude += amplitude;
                 amplitude *= persistence;
                 frequency *= 2;
@@ -336,8 +446,8 @@
             return total / maxAmplitude;
         }
 
-        function getHeightValueAtWorldCoords(worldX, worldY, perlinHeight, heightScale, persistence) {
-            return getOctaveNoise(worldX, worldY, perlinHeight, heightScale, persistence, 10);
+        function getHeightValueAtWorldCoords(worldX, worldY, perlinHeight, heightScale, persistence, mapScale) {
+            return getOctaveNoise(worldX, worldY, perlinHeight, heightScale, persistence, 10, mapScale);
         }
         
         function getBiomeFromValues(heightValue, moistureValue, temperatureValue, riverValue, sliders){
@@ -347,7 +457,7 @@
             const m = moistureValue * 255, t = temperatureValue * 255;
             
             if (h >= 128 && riverValue > 0.97) return 'river';
-            if (h < 110) return 'deepWater';
+            if (h < 110) return t <= 25 ? 'frozenDeepWater' : 'deepWater';
             if (h < 128) return t <= 25 ? 'frozenShallowWater' : 'shallowWater';
             if (h < 132) return t <= 25 ? 'snowyBeach' : 'beach';
             if (t <= 25 && m > 75) return 'iceSpikes';
@@ -377,16 +487,32 @@
         }
 
         function getBiomeAtWorldCoords(worldX, worldY, perlin, sliders) {
-            const heightValue = getHeightValueAtWorldCoords(worldX, worldY, perlin.height, sliders.heightScale, sliders.persistence);
-            const moistureValue = getOctaveNoise(worldX, worldY, perlin.moisture, sliders.moistureScale, sliders.persistence, 10);
-            const temperatureValue = getOctaveNoise(worldX, worldY, perlin.temperature, 150, sliders.persistence, 10);
-            const rawRiverNoise = getOctaveNoise(worldX, worldY, perlin.river, 40, sliders.persistence, 10);
+            const heightValue = getHeightValueAtWorldCoords(worldX, worldY, perlin.height, sliders.heightScale, sliders.persistence, sliders.mapScale);
+            let moistureValue = getOctaveNoise(worldX, worldY, perlin.moisture, sliders.moistureScale, sliders.persistence, 10, sliders.mapScale);
+            let temperatureValue = getOctaveNoise(worldX, worldY, perlin.temperature, 150, sliders.persistence, 10, sliders.mapScale);
+            
+            moistureValue = remapNoise(moistureValue, sliders.climateContrast);
+            temperatureValue = remapNoise(temperatureValue, sliders.climateContrast);
+
+            const rawRiverNoise = getOctaveNoise(worldX, worldY, perlin.river, 40, sliders.persistence, 10, sliders.mapScale);
             const riverValue = 1 - Math.abs(rawRiverNoise * 2 - 1);
             return getBiomeFromValues(heightValue, moistureValue, temperatureValue, riverValue, sliders);
         }
 
-        function getMovementSpeedModifier(biome, equippedTool) {
-            if (equippedTool === 'boat' && (biome.includes('Water') || biome === 'river')) return 2.5;
+        function getAbsoluteHeight(worldX, worldY, perlin, sliders, cache) {
+            const key = `${worldX},${worldY}`;
+            if (cache && cache.has(key)) return cache.get(key);
+
+            const { waterLevel } = sliders;
+            const heightValue = getHeightValueAtWorldCoords(worldX, worldY, perlin.height, sliders.heightScale, sliders.persistence, sliders.mapScale);
+            const landHeight = (heightValue - waterLevel) / (1 - waterLevel);
+            const h = heightValue < waterLevel ? (1 - (waterLevel - heightValue) / waterLevel) * 128 : 128 + landHeight * 127;
+            
+            if(cache) cache.set(key, h);
+            return h;
+        }
+
+        function getMovementSpeedModifier(biome) {
             switch (biome) {
                 case 'deepWater': case 'frozenDeepWater': case 'river': return 0.4;
                 case 'shallowWater': case 'frozenShallowWater': return 0.6;
@@ -397,26 +523,37 @@
         }
         
         function getPixelLightness(x, y, heightValue, perlinHeight, sliders, sunVector) {
-            const { heightScale, persistence } = sliders;
-            const h_x1 = getHeightValueAtWorldCoords(x + 1, y, perlinHeight, heightScale, persistence);
-            const h_y1 = getHeightValueAtWorldCoords(x, y + 1, perlinHeight, heightScale, persistence);
-            const normalX = (heightValue - h_x1) * 20, normalY = (heightValue - h_y1) * 20;
+            const { heightScale, persistence, mapScale } = sliders;
+            const h_x1 = getHeightValueAtWorldCoords(x + 1, y, perlinHeight, heightScale, persistence, mapScale);
+            const h_y1 = getHeightValueAtWorldCoords(x, y + 1, perlinHeight, heightScale, persistence, mapScale);
+            const normalX = ((heightValue - h_x1) * 20) / mapScale;
+            const normalY = ((heightValue - h_y1) * 20) / mapScale;
             const dotProduct = normalX * sunVector[0] + normalY * sunVector[1];
             const lighting = 1.0 + dotProduct * 0.5;
             return Math.max(0.6, Math.min(1.4, lighting));
         }
 
         function getTreePlacementRadius(biome, sliders) {
-              const multiplier = sliders.treeDensityMultiplier || 1;
-              let baseRadius = 0;
-              switch (biome) {
-                  case 'forest': case 'jungle': case 'taiga': baseRadius = 3; break;
-                  case 'forestHills': case 'jungleHills': case 'taigaHills': baseRadius = 4; break;
-                  case 'swamp': case 'plain': baseRadius = 5; break;
-                  case 'savanna': baseRadius = 7; break;
-                  default: return 0;
-              }
-              return Math.max(1, baseRadius / multiplier);
+             const multiplier = sliders.treeDensityMultiplier || 1;
+             let baseRadius = 0;
+             switch (biome) {
+                case 'forest': case 'jungle': case 'taiga': baseRadius = 4; break;
+                case 'forestHills': case 'jungleHills': case 'taigaHills': baseRadius = 5; break;
+                case 'swamp': baseRadius = 7; break;
+                case 'plain': baseRadius = 9; break;
+                case 'savanna': baseRadius = 12; break;
+                default: return 0; // No trees in other biomes
+             }
+             return Math.max(1, baseRadius / multiplier);
+        }
+        
+        function getFishPlacementRadius(biome, sliders) {
+            const multiplier = sliders.fishDensityMultiplier || 1;
+            if (multiplier === 0) return 0;
+            if (biome.includes('Water') || biome === 'river') {
+                return Math.max(2, 10 / multiplier);
+            }
+            return 0;
         }
 
         function getTimeOfDayInfo() {
@@ -440,25 +577,17 @@
         // =================================================================================
         // CHUNKS AND DRAWING
         // =================================================================================
-        let perlin, isGenerating = false, isGamePaused = false, isDebugViewActive = false;
+        let perlin, isGenerating = false, isGamePaused = false, isDebugViewActive = false, isContourOverlayActive = false;
         let keys = {}, timeOfDay = 0.25, lastFrameTime = 0, lastFpsUpdateTime = 0;
         const fpsHistory = [], messages = [], particles = [];
         let minFps = Infinity, maxFps = 0;
         
         let player = {
-            x: 0, y: 0, thirst: 100, hasShelter: false, equippedTool: null,
-            inventory: { boat: 0 },
-            resources: { wood: 0, stone: 0, water: 0, fish: {} }
+            x: 0, y: 0,
+            fishLog: {}
         };
 
-        const RECIPES = {
-            shelter: { name: "Shelter", emoji: "🛖", description: "Stops thirst from decreasing.", cost: { wood: 10, stone: 5 }, craft: p => { if (p.hasShelter) return false; p.hasShelter = true; return true; } },
-            axe: { name: "Axe", emoji: "🪓", description: "Gathers 2 wood from trees.", cost: { wood: 5, stone: 2 }, craft: p => { if (p.equippedTool === 'axe') return false; p.equippedTool = 'axe'; return true; } },
-            pickaxe: { name: "Pickaxe", emoji: "⛏️", description: "Gathers 2 stone from mountains.", cost: { wood: 2, stone: 5 }, craft: p => { if (p.equippedTool === 'pickaxe') return false; p.equippedTool = 'pickaxe'; return true; } },
-            boat: { name: "Boat", emoji: "⛵", description: "Move much faster on water.", cost: { wood: 20 }, craft: p => { p.inventory.boat = (p.inventory.boat || 0) + 1; return true; } },
-        };
-
-        let DOMElements, canvas, viewport, playerDiv, playerEmojiSpan, seedInput, ctx, fpsGraphCtx, sliders;
+        let DOMElements, canvas, viewport, playerDiv, playerEmojiSpan, seedInput, ctx, sliders;
         const minimapCanvas = document.getElementById('minimapCanvas');
         const minimapCtx = minimapCanvas.getContext('2d');
         minimapCanvas.width = minimapCanvas.height = 100;
@@ -472,12 +601,14 @@
             return {
                 heightScale: parseFloat(sliders.heightScale.slider.value),
                 moistureScale: parseFloat(sliders.moistureScale.slider.value),
+                climateContrast: parseFloat(sliders.climateContrast.slider.value),
                 pixelScale: parseFloat(sliders.pixelScale.slider.value),
                 persistence: parseFloat(sliders.persistence.slider.value),
                 playerSpeed: parseFloat(sliders.playerSpeed.slider.value),
                 waterLevel: parseFloat(sliders.waterLevel.slider.value),
                 treeDensityMultiplier: parseFloat(sliders.treeDensity.slider.value),
                 fishDensityMultiplier: parseFloat(sliders.fishDensity.slider.value),
+                mapScale: parseFloat(sliders.mapScale.slider.value),
             };
         }
 
@@ -498,38 +629,13 @@
             perlin = {
                 height: new PerlinNoise(seed), moisture: new PerlinNoise(seed + 1),
                 object: new PerlinNoise(seed + 2), temperature: new PerlinNoise(seed + 3),
-                river: new PerlinNoise(seed + 4), treePlacement: new PerlinNoise(seed + 5)
+                river: new PerlinNoise(seed + 4)
             };
         }
 
-        function generateChunkData(chunkX, chunkY, sliders, sunVector) {
+        function generateChunkData(chunkX, chunkY, sliders, sunVector, seed) {
             const key = `${chunkX},${chunkY}`;
-            const TREE_NOISE_FREQUENCY = 25;
 
-            if (!rawNoiseCache.has(key)) {
-                const rawData = { height: [], moisture: [], temperature: [], river: [], tree: [] };
-                for (let y = 0; y < CHUNK_SIZE; y++) {
-                    for (let x = 0; x < CHUNK_SIZE; x++) {
-                        const worldX = chunkX * CHUNK_SIZE + x, worldY = chunkY * CHUNK_SIZE + y;
-                        rawData.height.push(getHeightValueAtWorldCoords(worldX, worldY, perlin.height, sliders.heightScale, sliders.persistence));
-                        rawData.moisture.push(getOctaveNoise(worldX, worldY, perlin.moisture, sliders.moistureScale, sliders.persistence, 10));
-                        rawData.temperature.push(getOctaveNoise(worldX, worldY, perlin.temperature, 150, sliders.persistence, 10));
-                        rawData.river.push(getOctaveNoise(worldX, worldY, perlin.river, 40, sliders.persistence, 10));
-                    }
-                }
-                const treeNoiseValues = {};
-                const requiredRadius = 8; 
-                for (let y = -requiredRadius; y < CHUNK_SIZE + requiredRadius; y++) {
-                    for (let x = -requiredRadius; x < CHUNK_SIZE + requiredRadius; x++) {
-                        const worldX = chunkX * CHUNK_SIZE + x, worldY = chunkY * CHUNK_SIZE + y;
-                        treeNoiseValues[`${worldX},${worldY}`] = perlin.treePlacement.noise(worldX / TREE_NOISE_FREQUENCY, worldY / TREE_NOISE_FREQUENCY);
-                    }
-                }
-                rawData.tree = treeNoiseValues;
-                rawNoiseCache.set(key, rawData);
-            }
-            
-            const rawData = rawNoiseCache.get(key);
             const chunkCanvas = document.createElement('canvas');
             chunkCanvas.width = chunkCanvas.height = CHUNK_SIZE;
             const chunkCtx = chunkCanvas.getContext('2d'), chunkImageData = chunkCtx.createImageData(CHUNK_SIZE, CHUNK_SIZE);
@@ -537,58 +643,79 @@
 
             for (let y = 0; y < CHUNK_SIZE; y++) {
                 for (let x = 0; x < CHUNK_SIZE; x++) {
-                    const idxInRaw = y * CHUNK_SIZE + x;
                     const worldX = chunkX * CHUNK_SIZE + x, worldY = chunkY * CHUNK_SIZE + y;
                     
-                    const heightValue = rawData.height[idxInRaw];
-                    const moistureValue = rawData.moisture[idxInRaw];
-                    const temperatureValue = rawData.temperature[idxInRaw];
-                    const rawRiverNoise = rawData.river[idxInRaw];
-                    const riverValue = 1 - Math.abs(rawRiverNoise * 2 - 1);
-
-                    const biome = getBiomeFromValues(heightValue, moistureValue, temperatureValue, riverValue, sliders);
+                    const biome = getBiomeAtWorldCoords(worldX, worldY, perlin, sliders);
+                    const heightValue = getHeightValueAtWorldCoords(worldX, worldY, perlin.height, sliders.heightScale, sliders.persistence, sliders.mapScale);
                     const baseColor = BIOME_COLORS[biome] || [0,0,0];
                     const lightness = getPixelLightness(worldX, worldY, heightValue, perlin.height, sliders, sunVector);
                     
                     const [r,g,b] = baseColor.map(c => Math.min(255, Math.max(0, c * lightness)));
                     const idx = (y * CHUNK_SIZE + x) * 4;
                     [data[idx], data[idx + 1], data[idx + 2], data[idx + 3]] = [r, g, b, 255];
-                    
-                    const R = getTreePlacementRadius(biome, sliders);
-                    if (R > 0 && !biome.includes('Water') && biome !== 'river') {
-                        const centerNoise = rawData.tree[`${worldX},${worldY}`];
-                        let isMax = true;
-                        for (let dy = -R; dy <= R && isMax; dy++) {
-                            for (let dx = -R; dx <= R; dx++) {
-                                if ((dx === 0 && dy === 0) || (dx*dx + dy*dy > R*R)) continue;
-                                if (rawData.tree[`${worldX + dx},${worldY + dy}`] > centerNoise) {
-                                    isMax = false; break;
-                                }
-                            }
-                        }
-                        if (isMax) objects.push({ x: worldX, y: worldY, type: 'tree', emoji: '🌳' });
-                    } else {
-                        for (const fishName in FISH_TYPES) {
-                            const fish = FISH_TYPES[fishName];
-                            if (fish.biomes.includes(biome)) {
-                                const fishNoise = perlin.object.noise(worldX + 1000, worldY + 1000);
-                                if (fishNoise < (fish.rarity * sliders.fishDensityMultiplier)) {
-                                    objects.push({ x: worldX, y: worldY, type: 'fish', name: fishName, emoji: fish.emoji });
-                                    break;
-                                }
-                            }
-                        }
-                    }
                 }
             }
             chunkCtx.putImageData(chunkImageData, 0, 0);
-            chunkCache.set(key, { canvas: chunkCanvas, objects: objects });
+            
+            const trees = PoissonDisk.generatePointsForChunk(chunkX, chunkY, perlin, sliders, seed, 
+                getTreePlacementRadius, 
+                (biome) => getTreePlacementRadius(biome, sliders) > 0,
+                (c) => {
+                    const possibleTrees = Object.values(TREE_TYPES).filter(t => t.biomes.includes(c.biome));
+                    if (possibleTrees.length === 0) return null;
+
+                    const typeRand = seededRandom(c.x * c.y + seed + 1)();
+                    const treeIndex = Math.floor(typeRand * possibleTrees.length);
+                    const treeType = possibleTrees[treeIndex];
+                    if (!treeType) return null;
+
+                    const heightRand = seededRandom(c.x * 123 + c.y * 456 + seed + 4)();
+                    const height = treeType.minHeight + Math.floor(heightRand * (treeType.maxHeight - treeType.minHeight + 1));
+
+                    const offsetXRand = seededRandom(c.x * 987 + c.y * 654 + seed + 2)();
+                    const offsetYRand = seededRandom(c.x * 321 + c.y * 123 + seed + 3)();
+                    
+                    const offsetX = (offsetXRand - 0.5) * 0.8;
+                    const offsetY = (offsetYRand - 0.5) * 0.8;
+
+                    return { 
+                        x: Math.round(c.x), 
+                        y: Math.round(c.y), 
+                        type: 'tree', 
+                        emoji: treeType.emoji,
+                        height: height,
+                        offsetX,
+                        offsetY
+                    };
+                }
+            );
+
+            const fish = PoissonDisk.generatePointsForChunk(chunkX, chunkY, perlin, sliders, seed,
+                getFishPlacementRadius,
+                (biome) => biome.includes('Water') || biome === 'river',
+                (c) => {
+                    const possibleFish = Object.entries(FISH_TYPES).filter(([_, f]) => f.biomes.includes(c.biome));
+                    if (possibleFish.length === 0) return null;
+                    const rand = seededRandom(c.x * c.y + seed)();
+                    let totalRarity = possibleFish.reduce((sum, [_, f]) => sum + f.rarity, 0);
+                    let choice = rand * totalRarity;
+                    for (const [name, fishData] of possibleFish) {
+                        if (choice < fishData.rarity) return { x: Math.round(c.x), y: Math.round(c.y), type: 'fish', name, emoji: fishData.emoji };
+                        choice -= fishData.rarity;
+                    }
+                    const [name, fishData] = possibleFish[possibleFish.length - 1];
+                    return { x: Math.round(c.x), y: Math.round(c.y), type: 'fish', name, emoji: fishData.emoji };
+                }
+            );
+
+            objects.push(...trees.filter(t => t !== null), ...fish.filter(f => f !== null));
+            chunkCache.set(key, { canvas: chunkCanvas, objects });
             manageCache();
         }
 
         function drawWorld() {
             if (isGenerating || !perlin) return { visibleTrees: 0, visibleFish: 0 };
-            if (isDebugViewActive) { drawDebugNoiseView(); return { visibleTrees: 0, visibleFish: 0 }; }
+            if (isDebugViewActive) { drawDebugNoiseView(); return { visibleTrees: 0, visibleFish: 0, visibleBiomeCounts: {} }; }
 
             const sliders = getSliderValues();
             const { pixelScale } = sliders;
@@ -605,14 +732,16 @@
             const startChunkY = Math.floor(startTileY / CHUNK_SIZE), endChunkY = Math.ceil(endTileY / CHUNK_SIZE);
             
             let visibleTrees = 0, visibleFish = 0;
+            const visibleBiomeCounts = {};
             
             const angle = (timeOfDay - 0.25) * 2 * Math.PI;
             const sunVector = [-Math.cos(angle), -Math.sin(angle)];
+            const seed = parseInt(seedInput.value) || 0;
 
             for (let cy = startChunkY; cy < endChunkY; cy++) {
                 for (let cx = startChunkX; cx < endChunkX; cx++) {
                     const key = `${cx},${cy}`;
-                    if (!chunkCache.has(key)) { generateChunkData(cx, cy, sliders, sunVector); }
+                    if (!chunkCache.has(key)) { generateChunkData(cx, cy, sliders, sunVector, seed); }
                     const chunk = chunkCache.get(key);
                     if(!chunk) continue;
 
@@ -621,17 +750,111 @@
                     
                     ctx.drawImage(chunk.canvas, screenX, screenY, CHUNK_SIZE * pixelScale, CHUNK_SIZE * pixelScale);
                     
-                    ctx.font = `${pixelScale}px sans-serif`;
                     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                    
                     for (const obj of chunk.objects) {
-                          const objScreenX = (obj.x - startTileX) * pixelScale, objScreenY = (obj.y - startTileY) * pixelScale;
-                          if (objScreenX >= -pixelScale && objScreenX <= viewportWidth && objScreenY >= -pixelScale && objScreenY <= viewportHeight) {
-                              if (obj.type === 'tree') visibleTrees++;
-                              else if (obj.type === 'fish') visibleFish++;
-                              ctx.fillText(obj.emoji, objScreenX + pixelScale / 2, objScreenY + pixelScale / 2);
-                          }
+                         const objScreenX = (obj.x - startTileX) * pixelScale, objScreenY = (obj.y - startTileY) * pixelScale;
+                         if (objScreenX >= -pixelScale && objScreenX <= viewportWidth && objScreenY >= -pixelScale && objScreenY <= viewportHeight) {
+                             if (obj.type === 'tree') {
+                                 visibleTrees++;
+                                 ctx.font = `${pixelScale}px sans-serif`;
+                                 const renderX = objScreenX + pixelScale / 2 + (obj.offsetX || 0) * pixelScale;
+                                 const renderY = objScreenY + pixelScale / 2 + (obj.offsetY || 0) * pixelScale;
+                                 
+                                 ctx.save();
+                                 ctx.textBaseline = 'bottom';
+                                 ctx.translate(renderX, renderY + pixelScale / 2);
+                                 ctx.scale(1, obj.height);
+                                 ctx.fillText(obj.emoji, 0, 0);
+                                 ctx.restore();
+                             } else if (obj.type === 'fish') {
+                                 visibleFish++;
+                                 ctx.globalAlpha = 0.6 + Math.sin(Date.now() / 200 + obj.x) * 0.3;
+                                 ctx.font = `${pixelScale * 0.8}px sans-serif`;
+                                 ctx.fillText(obj.emoji, objScreenX + pixelScale / 2, objScreenY + pixelScale / 2);
+                                 ctx.globalAlpha = 1.0;
+                             }
+                         }
                     }
                 }
+            }
+
+            for (let wy = Math.floor(startTileY); wy < Math.ceil(endTileY); wy++) {
+                for (let wx = Math.floor(startTileX); wx < Math.ceil(endTileX); wx++) {
+                    const biome = getBiomeAtWorldCoords(wx, wy, perlin, sliders);
+                    visibleBiomeCounts[biome] = (visibleBiomeCounts[biome] || 0) + 1;
+                }
+            }
+
+            if (isContourOverlayActive) {
+                const contourInterval = 20; // Draw a line every 20 height units
+                const majorContourInterval = 100; // Thicker line and label
+                const contourColor = 'rgba(0, 0, 0, 0.4)';
+                const majorContourColor = 'rgba(0, 0, 0, 0.7)';
+                const labelColor = 'rgba(255, 255, 255, 0.9)';
+                const heightCache = new Map();
+                const labelInterval = Math.max(10, Math.round(120 / pixelScale));
+
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.shadowColor = 'black';
+                ctx.shadowBlur = 2;
+
+
+                for (let y = Math.floor(startTileY); y < endTileY; y++) {
+                    for (let x = Math.floor(startTileX); x < endTileX; x++) {
+                        const h1 = getAbsoluteHeight(x, y, perlin, sliders, heightCache);
+                        
+                        const h2 = getAbsoluteHeight(x + 1, y, perlin, sliders, heightCache);
+                        let minH = Math.min(h1, h2), maxH = Math.max(h1, h2);
+                        let contourLevel = Math.ceil(minH / contourInterval) * contourInterval;
+                        
+                        while (contourLevel < maxH) {
+                            const isMajor = contourLevel % majorContourInterval === 0;
+                            ctx.strokeStyle = isMajor ? majorContourColor : contourColor;
+                            ctx.lineWidth = isMajor ? 2 : 1.5;
+
+                            const screenX = (x + 1 - startTileX) * pixelScale;
+                            const screenY = (y - startTileY) * pixelScale;
+                            ctx.beginPath();
+                            ctx.moveTo(screenX, screenY);
+                            ctx.lineTo(screenX, screenY + pixelScale);
+                            ctx.stroke();
+
+                            if (y % labelInterval === 0) { 
+                                 ctx.font = `bold ${isMajor ? Math.max(9, pixelScale / 1.4) : Math.max(7, pixelScale / 1.6)}px sans-serif`;
+                                 ctx.fillStyle = labelColor;
+                                 ctx.fillText(contourLevel, screenX + 3, screenY + pixelScale / 2);
+                            }
+                            contourLevel += contourInterval;
+                        }
+
+                        const h3 = getAbsoluteHeight(x, y + 1, perlin, sliders, heightCache);
+                        minH = Math.min(h1, h3); maxH = Math.max(h1, h3);
+                        contourLevel = Math.ceil(minH / contourInterval) * contourInterval;
+
+                        while (contourLevel < maxH) {
+                            const isMajor = contourLevel % majorContourInterval === 0;
+                            ctx.strokeStyle = isMajor ? majorContourColor : contourColor;
+                            ctx.lineWidth = isMajor ? 2 : 1.5;
+
+                            const screenX = (x - startTileX) * pixelScale;
+                            const screenY = (y + 1 - startTileY) * pixelScale;
+                            ctx.beginPath();
+                            ctx.moveTo(screenX, screenY);
+                            ctx.lineTo(screenX + pixelScale, screenY);
+                            ctx.stroke();
+
+                            if (x % labelInterval === 0) { 
+                                ctx.font = `bold ${isMajor ? Math.max(9, pixelScale / 1.4) : Math.max(7, pixelScale / 1.6)}px sans-serif`;
+                                ctx.fillStyle = labelColor;
+                                ctx.fillText(contourLevel, screenX + pixelScale / 2, screenY + 3);
+                            }
+                            contourLevel += contourInterval;
+                        }
+                    }
+                }
+                ctx.shadowBlur = 0; // Reset shadow
             }
 
             const timeInfo = getTimeOfDayInfo();
@@ -662,7 +885,7 @@
             playerDiv.style.left = `${viewportWidth / 2}px`;
             playerDiv.style.top = `${viewportHeight / 2}px`;
 
-            return { visibleTrees, visibleFish };
+            return { visibleTrees, visibleFish, visibleBiomeCounts };
         }
         
         function drawDebugNoiseView() {
@@ -680,7 +903,7 @@
 
             for (let y = Math.floor(startTileY); y < Math.ceil(endTileY); y++) {
                 for (let x = Math.floor(startTileX); x < Math.ceil(endTileX); x++) {
-                    const noise = getOctaveNoise(x,y, perlin.river, 40, sliders.persistence, 10);
+                    const noise = getOctaveNoise(x,y, perlin.river, 40, sliders.persistence, 10, sliders.mapScale);
                     const r = noise * 255, b = (1 - noise) * 255;
                     ctx.fillStyle = `rgb(${r}, 0, ${b})`;
                     ctx.fillRect((x - startTileX) * pixelScale, (y - startTileY) * pixelScale, pixelScale, pixelScale);
@@ -692,18 +915,22 @@
 
         function drawMinimap() {
             const roundedPlayerX = Math.round(player.x), roundedPlayerY = Math.round(player.y);
+            // No need to redraw minimap if player hasn't moved to a new tile
             if (lastMinimapPlayerPos.x === roundedPlayerX && lastMinimapPlayerPos.y === roundedPlayerY) return;
             lastMinimapPlayerPos.x = roundedPlayerX; lastMinimapPlayerPos.y = roundedPlayerY;
 
             minimapCtx.clearRect(0, 0, 100, 100);
             minimapCtx.imageSmoothingEnabled = false;
-            const minimapScale = 2;
-            const startX = roundedPlayerX - Math.floor((100 / minimapScale) / 2), startY = roundedPlayerY - Math.floor((100 / minimapScale) / 2);
+
+            const MINIMAP_ZOOM = 4; // Each pixel on minimap represents a 4x4 area of game tiles
+            const startX = roundedPlayerX - (minimapCanvas.width / 2) * MINIMAP_ZOOM;
+            const startY = roundedPlayerY - (minimapCanvas.height / 2) * MINIMAP_ZOOM;
             const sliders = getSliderValues();
 
             for (let y = 0; y < 100; y++) {
                 for (let x = 0; x < 100; x++) {
-                    const worldX = startX + x / minimapScale, worldY = startY + y / minimapScale;
+                    const worldX = startX + x * MINIMAP_ZOOM;
+                    const worldY = startY + y * MINIMAP_ZOOM;
                     const biome = getBiomeAtWorldCoords(worldX, worldY, perlin, sliders);
                     const color = BIOME_COLORS[biome] || [0,0,0];
                     minimapCtx.fillStyle = `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
@@ -732,80 +959,56 @@
             }, 500);
         }
 
-        function updateHUD(currentBiome, visibleTrees = 0, visibleFish = 0) {
-            DOMElements.thirstFill.style.width = `${player.thirst}%`;
-            DOMElements.thirstText.textContent = `${Math.floor(player.thirst)}%`;
-            DOMElements.woodCount.textContent = player.resources.wood;
-            DOMElements.stoneCount.textContent = player.resources.stone;
-            DOMElements.waterCount.textContent = player.resources.water;
-            
-            const speedMod = getMovementSpeedModifier(currentBiome, player.equippedTool);
+        function updateHUD(currentBiome, visibleTrees = 0, visibleFish = 0, visibleBiomeCounts = {}) {
+            const speedMod = getMovementSpeedModifier(currentBiome);
             DOMElements.speedModifierText.textContent = `${speedMod}x`;
-            DOMElements.toolText.innerHTML = player.equippedTool ? `${RECIPES[player.equippedTool].name} ${RECIPES[player.equippedTool].emoji}` : 'Hand 🖐️';
             DOMElements.posText.textContent = `${Math.round(player.x)}, ${Math.round(player.y)}`;
             DOMElements.biomeText.textContent = currentBiome;
             DOMElements.timeText.textContent = formatTime(timeOfDay);
             DOMElements.treeCountText.textContent = visibleTrees;
             DOMElements.fishCountText.textContent = visibleFish;
 
-            DOMElements.shelterStatus.textContent = player.hasShelter ? 'Yes' : 'No';
-            DOMElements.shelterStatus.classList.toggle('text-green-400', player.hasShelter);
-            DOMElements.shelterStatus.classList.toggle('text-red-400', !player.hasShelter);
-            
-            DOMElements.fishCounts.innerHTML = '';
-            const fishEntries = Object.entries(player.resources.fish);
+            DOMElements.fishLog.innerHTML = '';
+            const fishEntries = Object.keys(player.fishLog);
             if (fishEntries.length === 0) {
-                DOMElements.fishCounts.innerHTML = `<p class="text-gray-500 text-xs italic">No fish caught</p>`;
+                DOMElements.fishLog.innerHTML = `<p class="text-gray-500 text-xs italic">No fish discovered</p>`;
             } else {
-                for (const [fishName, count] of fishEntries) {
-                    if (count > 0) {
-                        const fishInfo = FISH_TYPES[fishName];
-                        DOMElements.fishCounts.innerHTML += `<div class="flex justify-between items-center text-sm font-semibold"><span>${fishInfo.emoji} ${fishName.charAt(0).toUpperCase() + fishName.slice(1)}:</span><span>${count}</span></div>`;
-                    }
+                for (const fishName of fishEntries) {
+                    const fishInfo = FISH_TYPES[fishName];
+                    DOMElements.fishLog.innerHTML += `<div class="flex justify-between items-center text-sm font-semibold"><span>${fishInfo.emoji} ${fishName.charAt(0).toUpperCase() + fishName.slice(1)}</span><span class="text-green-400">✓</span></div>`;
                 }
             }
-            DOMElements.keysText.textContent = Object.keys(keys).filter(k => keys[k]).map(k => k.toUpperCase()).join(', ') || '...';
-        }
 
-        function updateCraftingMenu() {
-            DOMElements.craftingRecipes.innerHTML = '';
-            for (const [id, recipe] of Object.entries(RECIPES)) {
-                const canCraft = Object.entries(recipe.cost).every(([res, cost]) => player.resources[res] >= cost);
-                const costString = Object.entries(recipe.cost).map(([res, cost]) => `<span class="${player.resources[res] >= cost ? 'text-green-400' : 'text-red-400'} font-mono">${cost} ${res === 'wood' ? '🪵' : '🪨'}</span>`).join(', ');
-                let buttonState = '';
-                if (id === 'shelter' && player.hasShelter) buttonState = 'Built';
-                else if (id === 'axe' && player.equippedTool === 'axe') buttonState = 'Equipped';
-                else if (id === 'pickaxe' && player.equippedTool === 'pickaxe') buttonState = 'Equipped';
-                
-                DOMElements.craftingRecipes.innerHTML += `
-                    <div class="w-full bg-gray-700 rounded-lg p-4">
+            const legendEntries = DOMElements.legendEntries;
+            legendEntries.innerHTML = '';
+            const sortedBiomes = Object.keys(visibleBiomeCounts).sort((a, b) => visibleBiomeCounts[b] - visibleBiomeCounts[a]);
+
+            if (sortedBiomes.length === 0) {
+                 legendEntries.innerHTML = `<p class="text-gray-500 text-xs italic">No biomes in view</p>`;
+            } else {
+                for (const biomeName of sortedBiomes) {
+                    const count = visibleBiomeCounts[biomeName];
+                    const color = BIOME_COLORS[biomeName];
+                    const colorHex = `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
+                    
+                    const entryHTML = `
                         <div class="flex justify-between items-center">
-                            <div>
-                                <h3 class="text-lg font-bold">${recipe.name} ${recipe.emoji}</h3>
-                                <p class="text-sm text-gray-400">${recipe.description}</p>
-                                <div class="mt-2 text-sm"><span>Cost: </span>${costString}</div>
+                            <div class="flex items-center gap-2">
+                                <div class="w-4 h-4 rounded-sm border border-gray-600" style="background-color: ${colorHex};"></div>
+                                <span>${biomeName.charAt(0).toUpperCase() + biomeName.slice(1)}</span>
                             </div>
-                            <button id="craft-${id}" class="px-4 py-2 bg-blue-600 rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors" ${!canCraft || buttonState ? 'disabled' : ''}>
-                                ${buttonState || 'Craft'}
-                            </button>
+                            <span class="font-mono text-gray-400">${count}</span>
                         </div>
-                    </div>`;
+                    `;
+                    legendEntries.innerHTML += entryHTML;
+                }
             }
-            for (const id in RECIPES) {
-                const btn = document.getElementById(`craft-${id}`);
-                if (btn) btn.addEventListener('click', () => {
-                    const recipe = RECIPES[id];
-                    if (Object.entries(recipe.cost).every(([res, cost]) => player.resources[res] >= cost)) {
-                        if (recipe.craft(player)) {
-                            Object.entries(recipe.cost).forEach(([res, cost]) => player.resources[res] -= cost);
-                            showMessage(`${recipe.name} crafted!`);
-                            updateCraftingMenu();
-                        } else {
-                            showMessage(`Already have a ${recipe.name}.`);
-                        }
-                    }
-                });
-            }
+
+
+            DOMElements.keysText.textContent = Object.keys(keys).filter(k => keys[k]).map(k => k.toUpperCase()).join(', ') || '...';
+            DOMElements.contourStatus.textContent = isContourOverlayActive ? 'On' : 'Off';
+            DOMElements.contourStatus.classList.toggle('text-green-400', isContourOverlayActive);
+            DOMElements.contourStatus.classList.toggle('text-red-400', !isContourOverlayActive);
         }
         
         class Particle {
@@ -822,25 +1025,12 @@
             const deltaTime = (timestamp - lastFrameTime) / 1000 || 0;
             lastFrameTime = timestamp;
 
-            if (!isGamePaused) {
-                const oldTimeOfDay = timeOfDay;
-                timeOfDay += deltaTime * 0.01;
-                if (timeOfDay >= 1) timeOfDay = 0;
-                if (Math.floor(oldTimeOfDay * 100) !== Math.floor(timeOfDay * 100)) {
-                    chunkCache.clear();
-                }
-                updateCircularSliderUI(timeOfDay);
-            }
-
             if (timestamp - lastFpsUpdateTime > 100) {
                 const fps = 1 / deltaTime;
                 fpsHistory.push(fps); if (fpsHistory.length > 60) fpsHistory.shift();
                 minFps = Math.min(minFps, fps); maxFps = Math.max(maxFps, fps);
                 DOMElements.currentFps.textContent = Math.round(fps); DOMElements.minFps.textContent = Math.round(minFps); DOMElements.maxFps.textContent = Math.round(maxFps);
             }
-            
-            if (!player.hasShelter) player.thirst -= 0.5 * deltaTime;
-            if (player.thirst <= 0) { player.thirst = 0; showMessage("You died of thirst. Refresh to restart."); isGamePaused = true; }
             
             const sliders = getSliderValues();
             let moveX = 0, moveY = 0;
@@ -851,61 +1041,43 @@
             if (mag > 0) { moveX /= mag; moveY /= mag; }
             
             const currentBiome = getBiomeAtWorldCoords(Math.round(player.x), Math.round(player.y), perlin, sliders);
-            const speedModifier = getMovementSpeedModifier(currentBiome, player.equippedTool);
+            const speedModifier = getMovementSpeedModifier(currentBiome);
             
             player.x += moveX * sliders.playerSpeed * deltaTime * 10 * speedModifier;
             player.y += moveY * sliders.playerSpeed * deltaTime * 10 * speedModifier;
 
-            if (player.inventory.boat > 0 && (currentBiome.includes('Water') || currentBiome === 'river') && player.equippedTool !== 'boat') player.equippedTool = 'boat';
-            else if (player.equippedTool === 'boat' && !currentBiome.includes('Water') && currentBiome !== 'river') player.equippedTool = null;
-
-            if (player.equippedTool === 'boat') playerEmojiSpan.textContent = '⛵';
-            else if (player.equippedTool) playerEmojiSpan.textContent = `🚶${RECIPES[player.equippedTool].emoji}`;
-            else playerEmojiSpan.textContent = '🚶';
+            const isSwimming = (currentBiome.includes('Water') || currentBiome === 'river');
+            playerEmojiSpan.textContent = isSwimming ? '🏊' : '🚶';
 
             if (moveX > 0) playerEmojiSpan.style.transform = 'scaleX(-1)';
             else if (moveX < 0) playerEmojiSpan.style.transform = 'scaleX(1)';
 
-            const { visibleTrees, visibleFish } = drawWorld();
+            const { visibleTrees, visibleFish, visibleBiomeCounts } = drawWorld();
             drawMinimap();
-            updateHUD(currentBiome, visibleTrees, visibleFish);
+            updateHUD(currentBiome, visibleTrees, visibleFish, visibleBiomeCounts || {});
         }
         
         function performInteraction(worldX, worldY) {
-            if (isGenerating || isGamePaused || player.thirst <= 0 || !perlin) return;
+            if (isGenerating || isGamePaused || !perlin) return;
             const chunkX = Math.floor(worldX / CHUNK_SIZE), chunkY = Math.floor(worldY / CHUNK_SIZE);
             const chunk = chunkCache.get(`${chunkX},${chunkY}`);
             
             if (chunk) {
                 const objIndex = chunk.objects.findIndex(obj => obj.x === worldX && obj.y === worldY);
                 if (objIndex !== -1) {
-                    const object = chunk.objects.splice(objIndex, 1)[0];
+                    const object = chunk.objects[objIndex];
                     if (object.type === 'fish') {
-                        player.resources.fish[object.name] = (player.resources.fish[object.name] || 0) + 1;
-                        showMessage(`Caught a ${object.name}! ${object.emoji}`);
-                    } else if (object.type === 'tree') {
-                        const amount = player.equippedTool === 'axe' ? 2 : 1;
-                        player.resources.wood += amount;
-                        showMessage(`Gathered ${amount} wood! 🪵`);
+                        if (!player.fishLog[object.name]) {
+                             player.fishLog[object.name] = true;
+                            showMessage(`Discovered a ${object.name}! ${object.emoji}`);
+                        } else {
+                            showMessage(`You've already discovered the ${object.name}.`);
+                        }
+                        chunk.objects.splice(objIndex, 1);
+                        for(let i=0; i<5; i++) particles.push(new Particle(worldX, worldY));
                     }
-                    for(let i=0; i<5; i++) particles.push(new Particle(worldX, worldY));
-                    return;
                 }
             }
-            
-            const sliders = getSliderValues();
-            const biome = getBiomeAtWorldCoords(worldX, worldY, perlin, sliders);
-            if (biome.includes('Water') || biome === 'river') {
-                 player.resources.water += 1; player.thirst = Math.min(100, player.thirst + 10);
-                 showMessage("Collected water & drank! 💧");
-            } else if (['mountain', 'desertHills', 'badlandsHills', 'snowyMountains'].includes(biome)) {
-                 const amount = player.equippedTool === 'pickaxe' ? 2 : 1;
-                 player.resources.stone += amount;
-                 showMessage(`Gathered ${amount} stone! 🪨`);
-            } else {
-                showMessage("Nothing to gather here.");
-            }
-            for(let i=0; i<5; i++) particles.push(new Particle(worldX, worldY));
         }
 
         // =================================================================================
@@ -913,24 +1085,27 @@
         // =================================================================================
         function handleGenerate(isSeedChange = false) {
             if (isGenerating) return;
-            DOMElements.loading.classList.remove('hidden'); isGenerating = true;
-            setTimeout(() => {
-                if(isSeedChange) {
-                    rawNoiseCache.clear();
-                    generatePerlinMaps();
-                }
-                chunkCache.clear();
-                drawWorld(); drawMinimap();
-                DOMElements.loading.classList.add('hidden'); isGenerating = false;
-                minFps = Infinity; maxFps = 0; fpsHistory.length = 0;
-            }, 10);
+            DOMElements.loading.classList.remove('hidden'); 
+            isGenerating = true;
+            
+            lastMinimapPlayerPos = { x: null, y: null }; // Force minimap redraw
+            PoissonDisk.clearCache(); 
+            rawNoiseCache.clear();
+            chunkCache.clear();
+
+            if(isSeedChange) {
+                generatePerlinMaps();
+            }
+            
+            drawWorld(); 
+            drawMinimap();
+            DOMElements.loading.classList.add('hidden'); 
+            isGenerating = false;
+            minFps = Infinity; maxFps = 0; fpsHistory.length = 0;
         }
         
         function handleLoadAndResize() {
             canvas.width = viewport.clientWidth; canvas.height = viewport.clientHeight;
-            if (DOMElements.fpsGraph) {
-                DOMElements.fpsGraph.width = DOMElements.fpsGraph.clientWidth; DOMElements.fpsGraph.height = DOMElements.fpsGraph.clientHeight;
-            }
             if (!isGenerating && perlin) { drawWorld(); drawMinimap(); }
         }
 
@@ -995,13 +1170,12 @@
             }, { passive: true });
             window.addEventListener('touchend', (e) => {
                  for (let touch of e.changedTouches) {
-                     if (touch.identifier === joystickTouchId) {
-                         joystickTouchId = null; DOMElements.joystickHandle.style.transform = `translate(-50%, -50%)`;
-                         keys['w'] = keys['s'] = keys['a'] = keys['d'] = false; break;
-                     }
+                       if (touch.identifier === joystickTouchId) {
+                           joystickTouchId = null; DOMElements.joystickHandle.style.transform = `translate(-50%, -50%)`;
+                           keys['w'] = keys['s'] = keys['a'] = keys['d'] = false; break;
+                       }
                  }
             });
-            DOMElements.actionButton.addEventListener('touchstart', (e) => { e.preventDefault(); performInteraction(Math.round(player.x), Math.round(player.y)); });
         }
 
         window.onload = () => {
@@ -1011,32 +1185,32 @@
                 loading: document.getElementById('loading'),
                 player: document.getElementById('player'),
                 playerEmoji: document.getElementById('player-emoji'),
-                thirstText: document.getElementById('thirstText'),
-                thirstFill: document.getElementById('thirstFill'),
                 speedModifierText: document.getElementById('speedModifierText'),
-                toolText: document.getElementById('toolText'),
                 posText: document.getElementById('posText'),
                 biomeText: document.getElementById('biomeText'),
-                shelterStatus: document.getElementById('shelterStatus'),
                 timeText: document.getElementById('timeText'),
                 treeCountText: document.getElementById('treeCountText'),
                 fishCountText: document.getElementById('fishCountText'),
                 keysText: document.getElementById('keysText'),
-                woodCount: document.getElementById('woodCount'),
-                stoneCount: document.getElementById('stoneCount'),
-                waterCount: document.getElementById('waterCount'),
-                fishCounts: document.getElementById('fishCounts'),
+                fishLog: document.getElementById('fishLog'),
                 currentFps: document.getElementById('currentFps'),
                 minFps: document.getElementById('minFps'),
                 maxFps: document.getElementById('maxFps'),
                 messageBox: document.getElementById('messageBox'),
                 messageText: document.getElementById('messageText'),
-                settingsMenu: document.getElementById('settingsMenu'),
+                contourStatus: document.getElementById('contourStatus'),
+                settingsHud: document.getElementById('settingsHud'),
+                toggleSettings: document.getElementById('toggleSettings'),
+                legendHud: document.getElementById('legendHud'),
+                toggleLegend: document.getElementById('toggleLegend'),
+                legendEntries: document.getElementById('legendEntries'),
                 seedInput: document.getElementById('seedInput'),
                 heightScaleSlider: document.getElementById('heightScaleSlider'),
                 heightScaleValue: document.getElementById('heightScaleValue'),
                 moistureScaleSlider: document.getElementById('moistureScaleSlider'),
                 moistureScaleValue: document.getElementById('moistureScaleValue'),
+                climateContrastSlider: document.getElementById('climateContrastSlider'),
+                climateContrastValue: document.getElementById('climateContrastValue'),
                 pixelScaleSlider: document.getElementById('pixelScaleSlider'),
                 pixelScaleValue: document.getElementById('pixelScaleValue'),
                 persistenceSlider: document.getElementById('persistenceSlider'),
@@ -1049,29 +1223,39 @@
                 treeDensityValue: document.getElementById('treeDensityValue'),
                 fishDensitySlider: document.getElementById('fishDensitySlider'),
                 fishDensityValue: document.getElementById('fishDensityValue'),
-                craftingMenu: document.getElementById('craftingMenu'),
-                craftingRecipes: document.getElementById('craftingRecipes'),
+                mapScaleSlider: document.getElementById('mapScaleSlider'),
+                mapScaleValue: document.getElementById('mapScaleValue'),
                 timeSliderContainer: document.getElementById('timeSliderContainer'),
                 timeSliderProgress: document.getElementById('timeSliderProgress'),
                 timeSliderHandle: document.getElementById('timeSliderHandle'),
                 mobileControls: document.getElementById('mobileControls'),
                 joystick: document.getElementById('joystick'),
                 joystickHandle: document.getElementById('joystickHandle'),
-                actionButton: document.getElementById('actionButton'),
             };
+
+            DOMElements.seedInput.value = Math.floor(Math.random() * 90000) + 10000; // Set a random starting seed
 
             ({ canvas, viewport, player: playerDiv, playerEmoji: playerEmojiSpan, seedInput } = DOMElements);
             ctx = canvas.getContext('2d');
             sliders = {
                 heightScale: { slider: DOMElements.heightScaleSlider, span: DOMElements.heightScaleValue },
                 moistureScale: { slider: DOMElements.moistureScaleSlider, span: DOMElements.moistureScaleValue },
+                climateContrast: { slider: DOMElements.climateContrastSlider, span: DOMElements.climateContrastValue, fixed: 1 },
                 persistence: { slider: DOMElements.persistenceSlider, span: DOMElements.persistenceValue },
                 waterLevel: { slider: DOMElements.waterLevelSlider, span: DOMElements.waterLevelValue },
                 treeDensity: { slider: DOMElements.treeDensitySlider, span: DOMElements.treeDensityValue, suffix: 'x', fixed: 1 },
                 fishDensity: { slider: DOMElements.fishDensitySlider, span: DOMElements.fishDensityValue, suffix: 'x', fixed: 1 },
+                mapScale: { slider: DOMElements.mapScaleSlider, span: DOMElements.mapScaleValue, fixed: 2 },
                 pixelScale: { slider: DOMElements.pixelScaleSlider, span: DOMElements.pixelScaleValue, regen: false },
                 playerSpeed: { slider: DOMElements.playerSpeedSlider, span: DOMElements.playerSpeedValue, regen: false },
             };
+
+            DOMElements.toggleSettings.addEventListener('click', () => {
+                DOMElements.settingsHud.classList.toggle('collapsed');
+            });
+             DOMElements.toggleLegend.addEventListener('click', () => {
+                DOMElements.legendHud.classList.toggle('collapsed');
+            });
 
             window.addEventListener('resize', handleLoadAndResize);
             seedInput.addEventListener('change', () => handleGenerate(true));
@@ -1093,15 +1277,10 @@
             });
             document.addEventListener('keydown', (e) => {
                 if (e.target.tagName === 'INPUT') return;
-                const menuMap = { 'c': DOMElements.craftingMenu, 'Escape': DOMElements.settingsMenu };
-                const key = e.key.toLowerCase() === 'escape' ? 'Escape' : e.key.toLowerCase();
-                if (menuMap[key]) {
-                    Object.values(menuMap).forEach(m => { if (m !== menuMap[key]) m.classList.add('hidden'); });
-                    menuMap[key].classList.toggle('hidden');
-                    if (key === 'c' && !menuMap.c.classList.contains('hidden')) updateCraftingMenu();
-                } else if (key === 'p') { isDebugViewActive = !isDebugViewActive; chunkCache.clear(); }
-                isGamePaused = Object.values(menuMap).some(m => !m.classList.contains('hidden'));
-                document.body.style.cursor = isGamePaused ? 'default' : `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='40' height='48' viewport='0 0 100 100' style='font-size:24px;'><text y='50%'>🖐️</text></svg>") 16 24, auto`;
+                const key = e.key.toLowerCase();
+                if (key === 'p') { isDebugViewActive = !isDebugViewActive; chunkCache.clear(); 
+                } else if (key === 'h') { isContourOverlayActive = !isContourOverlayActive;
+                }
                 keys[e.key.toLowerCase()] = true;
             });
             document.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
@@ -1125,4 +1304,5 @@
     </script>
 </body>
 </html>
+
 
