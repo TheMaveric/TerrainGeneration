@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Procedural Terrain Explorer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='40' height='48' viewport='0 0 100 100' style='font-size:24px;'><text y='50%'>⛏️</text></svg>") 16 24, auto;
+            margin: 0;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #1a202c;
+        }
+
+        #game-viewport {
+            position: relative;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #canvas {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+        }
+        
+        #player {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            transform: translate(-50%, -50%);
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+        }
+
+        .pixelated {
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+
+        .bubble-effect {
+            animation: bubble 0.5s ease-out;
+        }
+
+        @keyframes bubble {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.2); opacity: 0.8; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-200">
+    
+    <div id="game-viewport">
+        <canvas id="canvas" class="pixelated"></canvas>
+        <div id="player">
+            <span id="player-emoji" class="text-lg">🚶</span>
+        </div>
+        <div id="loading" class="absolute inset-0 flex items-center justify-center bg-gray-800 bg-opacity-75 z-10 transition-opacity duration-300 hidden">
+            <svg class="animate-spin h-8 w-8 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+        </div>
+        <!-- In-game HUD -->
+        <div class="absolute top-4 left-4 p-3 bg-gray-800 rounded-lg shadow-md z-20">
+            <div class="flex flex-col gap-2 text-sm font-semibold">
+                <div class="flex justify-between items-center">
+                    <span>💧 Thirst:</span>
+                    <span id="thirstText">100%</span>
+                </div>
+                <div class="w-full h-2 bg-gray-900 rounded-full overflow-hidden">
+                    <div id="thirstFill" class="h-full bg-blue-500 transition-all duration-200" style="width: 100%;"></div>
+                </div>
+                <div class="flex justify-between items-center text-sm font-semibold">
+                    <span>⚡ Speed:</span>
+                    <span id="speedModifierText">1x</span>
+                </div>
+            </div>
+        </div>
+        <div class="absolute top-4 right-4 p-3 bg-gray-800 rounded-lg shadow-md z-20">
+            <div class="flex flex-col gap-2 text-sm font-semibold">
+                <div class="flex justify-between items-center">
+                    <span>🪵 Wood:</span>
+                    <span id="woodCount">0</span>
+                </div>
+                <div class="flex justify-between items-center text-sm font-semibold">
+                    <span>🪨 Stone:</span>
+                    <span id="stoneCount">0</span>
+                </div>
+                <div class="flex justify-between items-center text-sm font-semibold">
+                    <span>💧 Water:</span>
+                    <span id="waterCount">0</span>
+                </div>
+            </div>
+        </div>
+        <div id="fpsOverlay" class="absolute inset-0 bg-gray-900 bg-opacity-80 hidden z-30">
+            <div class="flex flex-col items-center justify-center h-full w-full">
+                <h2 class="text-xl font-bold text-white mb-2">FPS Performance</h2>
+                <div class="flex justify-between items-center mb-4 text-sm font-mono text-center">
+                    <div class="mx-4">Current: <span id="currentFps">--</span> FPS</div>
+                    <div class="mx-4">Min: <span id="minFps">--</span> FPS</div>
+                    <div class="mx-4">Max: <span id="maxFps">--</span> FPS</div>
+                </div>
+                <div class="relative w-3/4 h-1/2 border border-gray-600 rounded-lg">
+                    <canvas id="fpsGraph" class="w-full h-full bg-gray-900"></canvas>
+                </div>
+            </div>
+        </div>
+        <div id="messageBox" class="absolute top-24 right-4 flex justify-center z-40">
+            <div id="messageText" class="p-3 bg-gray-700 text-white rounded-lg shadow-md hidden text-center w-auto"></div>
+        </div>
+    </div>
+
+    <!-- Pause Menu -->
+    <div id="pauseMenu" class="fixed inset-0 bg-gray-900 bg-opacity-80 flex items-center justify-center z-50 hidden p-4">
+        <div class="bg-gray-800 p-6 sm:p-8 rounded-xl shadow-lg w-full max-w-2xl flex flex-col items-center gap-6">
+            <h2 class="text-2xl sm:text-3xl font-bold text-white text-center">Game Paused</h2>
+            <p class="text-sm text-gray-400">Press <kbd class="px-2 py-1 text-xs font-semibold bg-gray-700 rounded-md border border-gray-600">Esc</kbd> to resume.</p>
+            <div class="controls w-full grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div class="flex flex-col items-center">
+                    <label for="seedInput" class="text-sm font-semibold mb-2">Seed</label>
+                    <input type="text" id="seedInput" placeholder="Enter a number" value="12345" class="w-full text-center bg-gray-700 rounded-lg py-2 px-3 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div class="flex flex-col items-center">
+                    <label for="heightScaleSlider" class="text-sm font-semibold mb-2">Height Scale: <span id="heightScaleValue">50</span></label>
+                    <input type="range" id="heightScaleSlider" min="20" max="150" value="50" class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div class="flex flex-col items-center">
+                    <label for="moistureScaleSlider" class="text-sm font-semibold mb-2">Moisture Scale: <span id="moistureScaleValue">80</span></label>
+                    <input type="range" id="moistureScaleSlider" min="20" max="150" value="80" class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div class="flex flex-col items-center">
+                    <label for="pixelScaleSlider" class="text-sm font-semibold mb-2">Pixel Scale: <span id="pixelScaleValue">12</span></label>
+                    <input type="range" id="pixelScaleSlider" min="1" max="24" value="12" class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div class="flex flex-col items-center">
+                    <label for="octavesSlider" class="text-sm font-semibold mb-2">Octaves: <span id="octavesValue">6</span></label>
+                    <input type="range" id="octavesSlider" min="1" max="10" value="6" class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div class="flex flex-col items-center">
+                    <label for="persistenceSlider" class="text-sm font-semibold mb-2">Persistence: <span id="persistenceValue">0.5</span></label>
+                    <input type="range" id="persistenceSlider" min="0.1" max="1" step="0.05" value="0.5" class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div class="flex flex-col items-center">
+                    <label for="playerSpeedSlider" class="text-sm font-semibold mb-2">Player Speed: <span id="playerSpeedValue">2</span></label>
+                    <input type="range" id="playerSpeedSlider" min="0.5" max="5" step="0.5" value="2" class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div class="flex flex-col items-center">
+                    <label for="sunAngleSlider" class="text-sm font-semibold mb-2">Sun Angle: <span id="sunAngleValue">45</span>°</label>
+                    <input type="range" id="sunAngleSlider" min="0" max="360" value="45" class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div class="flex flex-col items-center">
+                    <label for="waterLevelSlider" class="text-sm font-semibold mb-2">Water Level: <span id="waterLevelValue">0.45</span></label>
+                    <input type="range" id="waterLevelSlider" min="0.0" max="1.0" step="0.05" value="0.45" class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div class="flex flex-col items-center">
+                    <label for="forestTreeDensitySlider" class="text-sm font-semibold mb-2">Forest Tree Density: <span id="forestTreeDensityValue">0.35</span></label>
+                    <input type="range" id="forestTreeDensitySlider" min="0.0" max="1.0" step="0.05" value="0.35" class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div class="flex flex-col items-center">
+                    <label for="grasslandTreeDensitySlider" class="text-sm font-semibold mb-2">Grassland Tree Density: <span id="grasslandTreeDensityValue">0.15</span></label>
+                    <input type="range" id="grasslandTreeDensitySlider" min="0.0" max="1.0" step="0.05" value="0.15" class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // CORE NOISE AND MATH FUNCTIONS
+        function seededRandom(seed) {
+            let state = Math.sin(seed) * 10000;
+            return function() {
+                state = (state * 9301 + 49297) % 233280;
+                return state / 233280;
+            };
+        }
+
+        class PerlinNoise {
+            constructor(seed) {
+                const random = seededRandom(seed);
+                this.p = new Array(512);
+                const permutation = new Array(256);
+                for (let i = 0; i < 256; i++) {
+                    permutation[i] = i;
+                }
+                for (let i = 0; i < 255; i++) {
+                    const j = Math.floor(random() * (256 - i)) + i;
+                    [permutation[i], permutation[j]] = [permutation[j], permutation[i]];
+                }
+                for (let i = 0; i < 256; i++) {
+                    this.p[i] = this.p[i + 256] = permutation[i];
+                }
+            }
+            noise(x, y) {
+                const X = Math.floor(x) & 255;
+                const Y = Math.floor(y) & 255;
+                x -= Math.floor(x);
+                y -= Math.floor(y);
+                const u = this.fade(x);
+                const v = this.fade(y);
+                const A = this.p[X] + Y;
+                const AA = this.p[A];
+                const AB = this.p[A + 1];
+                const B = this.p[X + 1] + Y;
+                const BA = this.p[B];
+                const BB = this.p[B + 1];
+                const result = this.lerp(v, this.lerp(u, this.grad(this.p[AA], x, y), this.grad(this.p[BA], x - 1, y)),
+                                          this.lerp(u, this.grad(this.p[AB], x, y - 1), this.grad(this.p[BB], x - 1, y - 1)));
+                return (result + 1.0) / 2.0;
+            }
+            fade(t) {
+                return t * t * t * (t * (t * 6 - 15) + 10);
+            }
+            lerp(t, a, b) {
+                return a + t * (b - a);
+            }
+            grad(hash, x, y) {
+                const h = hash & 3;
+                const u = h < 2 ? x : y;
+                const v = h < 2 ? y : x;
+                return ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v);
+            }
+        }
+        
+        // BIOME AND COLOR LOGIC
+        const BIOME_COLORS = {
+            'deepWater': [20, 91, 134],
+            'shallowWater': [38, 166, 245],
+            'frozenDeepWater': [20, 123, 174],
+            'frozenShallowWater': [37, 174, 255],
+            'beach': [255, 216, 122],
+            'snowyBeach': [250, 240, 191],
+            'desert': [250, 148, 24],
+            'desertHills': [210, 95, 17],
+            'badlands': [217, 69, 21],
+            'badlandsPlateau': [202, 140, 101],
+            'badlandsHills': [120, 25, 25],
+            'taiga': [10, 102, 89],
+            'taigaHills': [22, 57, 51],
+            'taigaMountains': [51, 142, 129],
+            'snowyTaiga': [49, 85, 74],
+            'snowyTaigaHills': [36, 63, 54],
+            'snowyTaigaMountains': [89, 125, 114],
+            'savanna': [189, 178, 95],
+            'savannaPlateau': [167, 157, 100],
+            'jungle': [83, 123, 9],
+            'jungleHills': [44, 66, 4],
+            'swamp': [48, 53, 40],
+            'swampHills': [31, 36, 24],
+            'plain': [141, 179, 96],
+            'forest': [5, 102, 33],
+            'forestHills': [0, 66, 44],
+            'forestMountains': [0, 48, 31],
+            'mountain': [96, 96, 96],
+            'snowyTundra': [255, 255, 255],
+            'snowyMountains': [160, 160, 160],
+            'iceSpikes': [180, 220, 220],
+            'river': [0, 191, 255]
+        };
+
+        function getBiomeAtWorldCoords(worldX, worldY, perlinHeight, perlinMoisture, perlinTemperature, perlinRiver, sliders) {
+            const { heightScale, moistureScale, octaves, persistence, waterLevel } = sliders;
+            
+            const heightValue = getHeightValueAtWorldCoords(worldX, worldY, perlinHeight, heightScale, octaves, persistence);
+            
+            let totalMoisture = 0;
+            let totalTemperature = 0;
+            let amplitude = 1;
+            let frequency = 1;
+            let maxAmplitude = 0;
+            
+            for (let i = 0; i < octaves; i++) {
+                totalMoisture += perlinMoisture.noise(worldX / moistureScale * frequency, worldY / moistureScale * frequency) * amplitude;
+                totalTemperature += perlinTemperature.noise(worldX / 150 * frequency, worldY / 150 * frequency) * amplitude;
+                maxAmplitude += amplitude;
+                amplitude *= persistence;
+                frequency *= 2;
+            }
+            const moistureValue = totalMoisture / maxAmplitude;
+            const temperatureValue = totalTemperature / maxAmplitude;
+            const riverValue = perlinRiver.noise(worldX / 10, worldY / 10);
+            
+            const normalizedHeight = heightValue * 255;
+            const normalizedMoisture = moistureValue * 255;
+            const normalizedTemperature = temperatureValue * 255;
+            const normalizedRiver = riverValue * 255;
+
+            // Simplified Biome Logic from Java code
+            if (normalizedHeight > 150) return 'deepWater';
+            if (normalizedHeight > 125) {
+                if (normalizedTemperature <= 25) return 'frozenShallowWater';
+                return 'shallowWater';
+            }
+
+            // River check
+            if (normalizedRiver > 248) {
+                if (normalizedTemperature <= 25) return 'frozenDeepWater';
+                return 'deepWater';
+            }
+            if (normalizedRiver > 245) {
+                if (normalizedTemperature <= 25) return 'frozenShallowWater';
+                return 'shallowWater';
+            }
+            
+            if (normalizedHeight > 115 && normalizedHeight <= 125) {
+                if (normalizedTemperature <= 25) return 'snowyBeach';
+                return 'beach';
+            }
+
+            if (normalizedTemperature <= 25 && normalizedMoisture > 75) return 'iceSpikes';
+            if (normalizedTemperature <= 25 && normalizedMoisture <= 50) return 'snowyTundra';
+            if ((normalizedTemperature > 25 && normalizedTemperature <= 50 && normalizedMoisture > 25 && normalizedMoisture <= 75) || (normalizedTemperature <= 25 && normalizedMoisture > 50 && normalizedMoisture <= 75)) {
+                if (normalizedTemperature < 25) {
+                     if (normalizedHeight <= 50) return 'snowyTaigaMountains';
+                     if (normalizedHeight <= 70) return 'snowyTaigaHills';
+                     return 'snowyTaiga';
+                } else {
+                     if (normalizedHeight <= 50) return 'taigaMountains';
+                     if (normalizedHeight <= 70) return 'taigaHills';
+                     return 'taiga';
+                }
+            }
+            if (normalizedTemperature > 66 && normalizedMoisture <= 25) {
+                 if (normalizedHeight <= 50) return 'desertHills';
+                 return 'desert';
+            }
+            if (normalizedTemperature > 25 && normalizedTemperature <= 66 && normalizedMoisture <= 25) {
+                 if (normalizedHeight <= 50) return 'badlandsHills';
+                 return 'badlands';
+            }
+            if ((normalizedTemperature > 66 && normalizedMoisture > 75) || (normalizedMoisture > 50 && normalizedTemperature > 50 && normalizedTemperature <= 66)) {
+                 if (normalizedHeight <= 50) return 'jungleHills';
+                 return 'jungle';
+            }
+            if (normalizedTemperature > 66 && normalizedMoisture <= 75 && normalizedMoisture > 50) {
+                 if (normalizedHeight <= 30) return 'forestMountains';
+                 if (normalizedHeight <= 50) return 'forestHills';
+                 return 'forest';
+            }
+            if (normalizedTemperature > 75 && normalizedMoisture <= 50 && normalizedMoisture > 25) {
+                 if (normalizedHeight <= 30) return 'savannaPlateau';
+                 return 'savanna';
+            }
+            if (normalizedTemperature > 50 && normalizedTemperature <= 75 && normalizedMoisture > 25 && normalizedMoisture <= 50) {
+                 if (normalizedHeight <= 50) return 'mountain';
+                 if (normalizedHeight > 115 && normalizedHeight <= 125) return 'beach';
+                 return 'plain';
+            }
+
+            return 'swamp';
+        }
+
+        function getHeightValueAtWorldCoords(worldX, worldY, perlinHeight, heightScale, octaves, persistence) {
+            let totalHeight = 0;
+            let amplitude = 1;
+            let frequency = 1;
+            let maxAmplitude = 0;
+            for (let i = 0; i < octaves; i++) {
+                totalHeight += perlinHeight.noise(worldX / heightScale * frequency, worldY / heightScale * frequency) * amplitude;
+                maxAmplitude += amplitude;
+                amplitude *= persistence;
+                frequency *= 2;
+            }
+            return totalHeight / maxAmplitude;
+        }
+
+        function getMovementSpeedModifier(biome) {
+            switch (biome) {
+                case 'deepWater':
+                case 'frozenDeepWater':
+                case 'river':
+                case 'jungle':
+                case 'jungleHills':
+                case 'swamp':
+                case 'swampHills':
+                    return 0.5;
+                case 'ocean':
+                case 'frozenShallowWater':
+                case 'taiga':
+                case 'taigaHills':
+                case 'snowyTaiga':
+                case 'snowyTaigaHills':
+                    return 0.7;
+                case 'beach':
+                case 'snowyBeach':
+                case 'savanna':
+                case 'savannaPlateau':
+                    return 0.9;
+                case 'snowyTundra':
+                case 'iceSpikes':
+                case 'snowyMountains':
+                case 'taigaMountains':
+                case 'snowyTaigaMountains':
+                case 'mountain':
+                case 'forestMountains':
+                    return 0.4;
+                default:
+                    return 1.0;
+            }
+        }
+        
+        function getPixelLightness(x, y, heightValue, perlinHeight, sliders) {
+            const { sunAngle, heightScale, octaves, persistence } = sliders;
+            const sunAngleRad = sunAngle * (Math.PI / 180);
+            const lightVector = [Math.cos(sunAngleRad), Math.sin(sunAngleRad)];
+            
+            const normalVector = [
+                (getHeightValueAtWorldCoords(x + 1, y, perlinHeight, heightScale, octaves, persistence) - heightValue) * 100,
+                (getHeightValueAtWorldCoords(x, y + 1, perlinHeight, heightScale, octaves, persistence) - heightValue) * 100,
+            ];
+            const normalMagnitude = Math.sqrt(normalVector[0] * normalVector[0] + normalVector[1] * normalVector[1]);
+            if (normalMagnitude > 0) {
+                normalVector[0] /= normalMagnitude;
+                normalVector[1] /= normalMagnitude;
+            }
+
+            const dotProduct = normalVector[0] * lightVector[0] + normalVector[1] * lightVector[1];
+            return 1.0 + dotProduct * 0.4;
+        }
+
+        function getTreeThreshold(biome, sliders) {
+             const { forestTreeDensity, grasslandTreeDensity } = sliders;
+             switch (biome) {
+                case 'forest':
+                case 'forestHills':
+                case 'rainforest':
+                case 'jungle':
+                case 'jungleHills':
+                case 'taiga':
+                case 'taigaHills':
+                case 'snowyTaiga':
+                case 'snowyTaigaHills':
+                    return forestTreeDensity;
+                case 'grassland':
+                case 'savanna':
+                case 'savannaPlateau':
+                case 'plain':
+                    return grasslandTreeDensity;
+                default:
+                    return 0;
+            }
+        }
+
+        // WORLD GENERATION & DRAWING
+        let worldData;
+        let worldDataWorldX, worldDataWorldY;
+        let worldWidth, worldHeight; // Global variables for world dimensions
+
+        function generatePerlinMaps() {
+            const seed = parseInt(seedInput.value) || 0;
+            perlinHeight = new PerlinNoise(seed);
+            perlinMoisture = new PerlinNoise(seed + 1);
+            perlinObject = new PerlinNoise(seed + 2);
+            perlinTemperature = new PerlinNoise(seed + 3);
+            perlinRiver = new PerlinNoise(seed + 4);
+        }
+
+        function generateWorldData(playerX, playerY) {
+            const pixelScale = parseInt(pixelScaleSlider.value);
+            const viewportWidth = viewport.clientWidth;
+            const viewportHeight = viewport.clientHeight;
+            
+            worldWidth = Math.ceil(viewportWidth / pixelScale) + 2;
+            worldHeight = Math.ceil(viewportHeight / pixelScale) + 2;
+
+            worldDataWorldX = Math.round(playerX) - Math.floor(worldWidth / 2);
+            worldDataWorldY = Math.round(playerY) - Math.floor(worldHeight / 2);
+
+            worldData = new Uint8ClampedArray(worldWidth * worldHeight * 4);
+            const sliders = {
+                heightScale: parseFloat(heightScaleSlider.value),
+                moistureScale: parseFloat(moistureScaleSlider.value),
+                pixelScale: parseFloat(pixelScaleSlider.value),
+                octaves: parseInt(octavesSlider.value),
+                persistence: parseFloat(persistenceSlider.value),
+                playerSpeed: parseFloat(playerSpeedSlider.value),
+                sunAngle: parseFloat(sunAngleSlider.value),
+                waterLevel: parseFloat(waterLevelSlider.value),
+                forestTreeDensity: parseFloat(forestTreeDensitySlider.value),
+                grasslandTreeDensity: parseFloat(grasslandTreeDensitySlider.value)
+            };
+
+            for (let y = 0; y < worldHeight; y++) {
+                for (let x = 0; x < worldWidth; x++) {
+                    const worldX = worldDataWorldX + x;
+                    const worldY = worldDataWorldY + y;
+                    const biome = getBiomeAtWorldCoords(worldX, worldY, perlinHeight, perlinMoisture, perlinTemperature, perlinRiver, sliders);
+                    const baseColor = BIOME_COLORS[biome] || [0,0,0];
+                    const heightValue = getHeightValueAtWorldCoords(worldX, worldY, perlinHeight, sliders.heightScale, sliders.octaves, sliders.persistence);
+                    const lightness = getPixelLightness(worldX, worldY, heightValue, perlinHeight, sliders);
+                    
+                    const r = Math.min(255, Math.max(0, baseColor[0] * lightness));
+                    const g = Math.min(255, Math.max(0, baseColor[1] * lightness));
+                    const b = Math.min(255, Math.max(0, baseColor[2] * lightness));
+
+                    const idx = (y * worldWidth + x) * 4;
+                    worldData[idx] = r;
+                    worldData[idx + 1] = g;
+                    worldData[idx + 2] = b;
+                    worldData[idx + 3] = 255;
+                }
+            }
+        }
+
+        function drawWorld() {
+            if (!worldData || isGenerating) return;
+
+            const pixelScale = parseInt(pixelScaleSlider.value);
+            const viewportWidth = viewport.clientWidth;
+            const viewportHeight = viewport.clientHeight;
+            
+            canvas.width = viewportWidth;
+            canvas.height = viewportHeight;
+
+            const imageData = new ImageData(worldData, worldWidth, worldHeight);
+            ctx.imageSmoothingEnabled = false;
+            ctx.putImageData(imageData, 0, 0);
+
+            // Draw trees and other objects
+            const playerWorldX = Math.round(player.x);
+            const playerWorldY = Math.round(player.y);
+            
+            const startX = playerWorldX - Math.floor(viewportWidth / (2 * pixelScale));
+            const startY = playerWorldY - Math.floor(viewportHeight / (2 * pixelScale));
+            const endX = startX + Math.ceil(viewportWidth / pixelScale) +1;
+            const endY = startY + Math.ceil(viewportHeight / pixelScale) +1;
+
+            const sliders = {
+                forestTreeDensity: parseFloat(forestTreeDensitySlider.value),
+                grasslandTreeDensity: parseFloat(grasslandTreeDensitySlider.value)
+            };
+
+            for (let y = startY; y < endY; y++) {
+                for (let x = startX; x < endX; x++) {
+                    const biome = getBiomeAtWorldCoords(x, y, perlinHeight, perlinMoisture, perlinTemperature, perlinRiver, sliders);
+                    const objectValue = perlinObject.noise(x, y);
+                    let treeThreshold = getTreeThreshold(biome, sliders);
+                    
+                    if (objectValue > (1.0 - treeThreshold)) {
+                         if (!biome.includes('Water') && biome !== 'river') {
+                            ctx.font = `${pixelScale}px sans-serif`;
+                            ctx.textAlign = 'center';
+                            ctx.textBaseline = 'middle';
+                            ctx.fillStyle = 'green';
+                            ctx.fillText('🌳', (x - startX) * pixelScale + pixelScale / 2, (y - startY) * pixelScale + pixelScale / 2);
+                         }
+                    }
+                }
+            }
+            
+            // Re-center the player on the viewport
+            playerDiv.style.left = `${viewportWidth / 2}px`;
+            playerDiv.style.top = `${viewportHeight / 2}px`;
+        }
+
+        // GAME STATE, HUD, AND LOOP
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const viewport = document.getElementById('game-viewport');
+        const loadingSpinner = document.getElementById('loading');
+        
+        const seedInput = document.getElementById('seedInput');
+        const heightScaleSlider = document.getElementById('heightScaleSlider');
+        const moistureScaleSlider = document.getElementById('moistureScaleSlider');
+        const pixelScaleSlider = document.getElementById('pixelScaleSlider');
+        const octavesSlider = document.getElementById('octavesSlider');
+        const persistenceSlider = document.getElementById('persistenceSlider');
+        const playerSpeedSlider = document.getElementById('playerSpeedSlider');
+        const sunAngleSlider = document.getElementById('sunAngleSlider');
+        const waterLevelSlider = document.getElementById('waterLevelSlider');
+        const pauseMenu = document.getElementById('pauseMenu');
+        
+        const heightScaleValueSpan = document.getElementById('heightScaleValue');
+        const moistureScaleValueSpan = document.getElementById('moistureScaleValue');
+        const pixelScaleValueSpan = document.getElementById('pixelScaleValue');
+        const octavesValueSpan = document.getElementById('octavesValue');
+        const persistenceValueSpan = document.getElementById('persistenceValue');
+        const playerSpeedValueSpan = document.getElementById('playerSpeedValue');
+        const sunAngleValueSpan = document.getElementById('sunAngleValue');
+        const waterLevelValueSpan = document.getElementById('waterLevelValue');
+        const forestTreeDensitySlider = document.getElementById('forestTreeDensitySlider');
+        const grasslandTreeDensitySlider = document.getElementById('grasslandTreeDensitySlider');
+        const forestTreeDensityValueSpan = document.getElementById('forestTreeDensityValue');
+        const grasslandTreeDensityValueSpan = document.getElementById('grasslandTreeDensityValue');
+
+        const thirstFill = document.getElementById('thirstFill');
+        const thirstText = document.getElementById('thirstText');
+        const woodCountSpan = document.getElementById('woodCount');
+        const stoneCountSpan = document.getElementById('stoneCount');
+        const waterCountSpan = document.getElementById('waterCount');
+        const speedModifierText = document.getElementById('speedModifierText');
+        let messageBox;
+        let messageText;
+        const messages = [];
+        const playerDiv = document.getElementById('player');
+        const playerEmojiSpan = document.getElementById('player-emoji');
+        
+        const currentFpsText = document.getElementById('currentFps');
+        const minFpsText = document.getElementById('minFps');
+        const maxFpsText = document.getElementById('maxFps');
+        const fpsGraphCanvas = document.getElementById('fpsGraph');
+        const fpsGraphCtx = fpsGraphCanvas.getContext('2d');
+        const fpsOverlay = document.getElementById('fpsOverlay');
+
+        const SHELTER_COST_WOOD = 10;
+        const SHELTER_COST_STONE = 5;
+
+        let perlinHeight;
+        let perlinMoisture;
+        let perlinObject;
+        let perlinTemperature;
+        let perlinRiver;
+
+        let isGenerating = false;
+        let isGamePaused = false;
+        let keys = {};
+
+        let player = {
+            x: 0,
+            y: 0,
+            thirst: 100,
+            hasShelter: false,
+            resources: {
+                wood: 0,
+                stone: 0,
+                water: 0
+            }
+        };
+        let thirstRate = 0.05;
+
+        let lastFrameTime = 0;
+        let fpsUpdateInterval = 100; // in milliseconds
+        let lastFpsUpdateTime = 0;
+        const fpsHistory = [];
+        const maxFpsHistory = 60;
+        let minFps = Infinity;
+        let maxFps = 0;
+
+        function showLoading() {
+            loadingSpinner.classList.remove('hidden');
+            isGenerating = true;
+        }
+
+        function hideLoading() {
+            loadingSpinner.classList.add('hidden');
+            isGenerating = false;
+        }
+
+        function showMessage(msg) {
+            messages.push(msg);
+            if (messages.length === 1) {
+                displayNextMessage();
+            }
+        }
+        
+        function displayNextMessage() {
+            if (messages.length === 0) {
+                return;
+            }
+
+            const msg = messages[0];
+            messageText.textContent = msg;
+            messageText.classList.remove('hidden');
+            messageText.style.opacity = 1;
+
+            let currentOpacity = 1;
+            const fadeInterval = setInterval(() => {
+                currentOpacity -= 0.05;
+                if (currentOpacity <= 0) {
+                    clearInterval(fadeInterval);
+                    messageText.classList.add('hidden');
+                    messages.shift();
+                    displayNextMessage();
+                } else {
+                    messageText.style.opacity = currentOpacity;
+                }
+            }, 50);
+        }
+
+        function updateHUD(currentBiome) {
+            thirstFill.style.width = `${player.thirst}%`;
+            thirstText.textContent = `${Math.floor(player.thirst)}%`;
+            woodCountSpan.textContent = player.resources.wood;
+            stoneCountSpan.textContent = player.resources.stone;
+            waterCountSpan.textContent = player.resources.water;
+            
+            speedModifierText.textContent = `${getMovementSpeedModifier(currentBiome)}x`;
+        }
+
+        function drawFPSGraph() {
+            const width = fpsGraphCanvas.width;
+            const height = fpsGraphCanvas.height;
+            fpsGraphCtx.clearRect(0, 0, width, height);
+
+            if (fpsHistory.length === 0) return;
+
+            const maxFPS = Math.max(100, ...fpsHistory);
+            const minFPS = Math.min(0, ...fpsHistory);
+            const range = maxFPS - minFPS;
+            const stepX = width / (maxFpsHistory - 1);
+            
+            fpsGraphCtx.beginPath();
+            fpsGraphCtx.strokeStyle = '#34d399';
+            fpsGraphCtx.lineWidth = 1;
+
+            for (let i = 0; i < fpsHistory.length; i++) {
+                const x = i * stepX;
+                const y = height - ((fpsHistory[i] - minFPS) / range) * height;
+                if (i === 0) {
+                    fpsGraphCtx.moveTo(x, y);
+                } else {
+                    fpsGraphCtx.lineTo(x, y);
+                }
+            }
+            fpsGraphCtx.stroke();
+        }
+
+        // GAME LOOP AND INPUT HANDLING
+        function gameLoop(timestamp) {
+            if (isGamePaused) {
+                requestAnimationFrame(gameLoop);
+                return;
+            }
+
+            const deltaTime = (timestamp - lastFrameTime) / 1000;
+            lastFrameTime = timestamp;
+
+            if (timestamp - lastFpsUpdateTime > fpsUpdateInterval) {
+                const fps = 1 / deltaTime;
+                fpsHistory.push(fps);
+                if (fpsHistory.length > maxFpsHistory) {
+                    fpsHistory.shift();
+                }
+                
+                minFps = Infinity;
+                maxFps = 0;
+                for(let i = 0; i < fpsHistory.length; i++){
+                    if (fpsHistory[i] < minFps) minFps = fpsHistory[i];
+                    if (fpsHistory[i] > maxFps) maxFps = fpsHistory[i];
+                }
+
+                currentFpsText.textContent = Math.round(fps);
+                minFpsText.textContent = Math.round(minFps);
+                maxFpsText.textContent = Math.round(maxFps);
+
+                drawFPSGraph();
+                lastFpsUpdateTime = timestamp;
+            }
+
+            if (!player.hasShelter) {
+                player.thirst -= thirstRate * deltaTime;
+            }
+            
+            if (player.thirst <= 0) {
+                player.thirst = 0;
+                showMessage("Game Over! You died of thirst. Refresh to restart.");
+            }
+            
+            const playerSpeed = parseFloat(playerSpeedSlider.value);
+            
+            let moveX = 0;
+            let moveY = 0;
+            if (keys['w'] || keys['ArrowUp']) { moveY -= 1; }
+            if (keys['s'] || keys['ArrowDown']) { moveY += 1; }
+            if (keys['a'] || keys['ArrowLeft']) { moveX -= 1; }
+            if (keys['d'] || keys['ArrowRight']) { moveX += 1; }
+            
+            const isMoving = moveX !== 0 || moveY !== 0;
+
+            if (isMoving) {
+                const magnitude = Math.sqrt(moveX * moveX + moveY * moveY);
+                if (magnitude > 0) {
+                    moveX /= magnitude;
+                    moveY /= magnitude;
+                }
+            }
+            
+            const currentBiome = getBiomeAtWorldCoords(Math.round(player.x), Math.round(player.y), perlinHeight, perlinMoisture, perlinTemperature, perlinRiver, {
+                heightScale: parseFloat(heightScaleSlider.value),
+                moistureScale: parseFloat(moistureScaleSlider.value),
+                octaves: parseInt(octavesSlider.value),
+                persistence: parseFloat(persistenceSlider.value),
+                waterLevel: parseFloat(waterLevelSlider.value)
+            });
+            const speedModifier = getMovementSpeedModifier(currentBiome);
+            
+            if (speedModifier > 0) {
+                player.x += moveX * playerSpeed * deltaTime * 10 * speedModifier;
+                player.y += moveY * playerSpeed * deltaTime * 10 * speedModifier;
+            }
+
+            // Update emoji and direction
+            if (currentBiome.includes('Water') || currentBiome === 'river') {
+                playerEmojiSpan.textContent = '🏊';
+            } else {
+                playerEmojiSpan.textContent = '🚶';
+            }
+
+            if (moveX > 0) {
+                playerEmojiSpan.style.transform = 'scaleX(1)';
+            } else if (moveX < 0) {
+                playerEmojiSpan.style.transform = 'scaleX(-1)';
+            }
+
+            drawWorld();
+            updateHUD(currentBiome);
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // EVENT HANDLERS
+        function handleGenerate() {
+            showLoading();
+            generatePerlinMaps();
+            generateWorldData(player.x, player.y);
+            drawWorld();
+            hideLoading();
+            minFps = Infinity;
+            maxFps = 0;
+            fpsHistory.length = 0;
+        }
+        
+        function handleLoadAndResize() {
+            canvas.width = viewport.clientWidth;
+            canvas.height = viewport.clientHeight;
+            fpsGraphCanvas.width = fpsGraphCanvas.clientWidth;
+            fpsGraphCanvas.height = fpsGraphCanvas.clientHeight;
+            
+            if (!isGenerating) {
+                generateWorldData(player.x, player.y);
+                drawWorld();
+            }
+        }
+
+        window.addEventListener('resize', handleLoadAndResize);
+        
+        seedInput.addEventListener('input', handleGenerate);
+        heightScaleSlider.addEventListener('input', () => {
+            heightScaleValueSpan.textContent = heightScaleSlider.value;
+            handleGenerate();
+        });
+        moistureScaleSlider.addEventListener('input', () => {
+            moistureScaleValueSpan.textContent = moistureScaleSlider.value;
+            handleGenerate();
+        });
+        pixelScaleSlider.addEventListener('input', () => {
+            pixelScaleValueSpan.textContent = pixelScaleSlider.value;
+            drawWorld();
+        });
+        octavesSlider.addEventListener('input', () => {
+            octavesValueSpan.textContent = octavesSlider.value;
+            handleGenerate();
+        });
+        persistenceSlider.addEventListener('input', () => {
+            persistenceValueSpan.textContent = persistenceSlider.value;
+            handleGenerate();
+        });
+        playerSpeedSlider.addEventListener('input', () => {
+            playerSpeedValueSpan.textContent = playerSpeedSlider.value;
+        });
+        sunAngleSlider.addEventListener('input', () => {
+            sunAngleValueSpan.textContent = sunAngleSlider.value;
+            generateWorldData(player.x, player.y);
+            drawWorld();
+        });
+        waterLevelSlider.addEventListener('input', () => {
+            waterLevelValueSpan.textContent = waterLevelSlider.value;
+            handleGenerate();
+        });
+        
+        forestTreeDensitySlider.addEventListener('input', () => {
+            forestTreeDensityValueSpan.textContent = forestTreeDensitySlider.value;
+            drawWorld();
+        });
+        
+        grasslandTreeDensitySlider.addEventListener('input', () => {
+            grasslandTreeDensityValueSpan.textContent = grasslandTreeDensitySlider.value;
+            drawWorld();
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === "Escape") {
+                isGamePaused = !isGamePaused;
+                pauseMenu.classList.toggle('hidden');
+                document.body.style.cursor = isGamePaused ? 'default' : 'url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'40\' height=\'48\' viewport=\'0 0 100 100\' style=\'font-size:24px;\'><text y=\'50%\'>⛏️</text></svg>") 16 24, auto';
+                return;
+            }
+            if (e.key === '`' || e.key === '~') {
+                fpsOverlay.classList.toggle('hidden');
+                return;
+            }
+            keys[e.key.toLowerCase()] = true;
+        });
+        document.addEventListener('keyup', (e) => {
+            keys[e.key.toLowerCase()] = false;
+        });
+
+        canvas.addEventListener('click', (e) => {
+            if (isGenerating || isGamePaused || player.thirst <= 0 || !perlinHeight) {
+                return;
+            }
+
+            const pixelScale = parseInt(pixelScaleSlider.value);
+            const rect = canvas.getBoundingClientRect();
+            
+            const viewX = Math.floor(e.clientX - rect.left);
+            const viewY = Math.floor(e.clientY - rect.top);
+
+            const startX = Math.round(player.x) - Math.floor((viewport.clientWidth / 2) / pixelScale);
+            const startY = Math.round(player.y) - Math.floor((viewport.clientHeight / 2) / pixelScale);
+            
+            const worldX = startX + Math.floor(viewX / pixelScale);
+            const worldY = startY + Math.floor(viewY / pixelScale);
+            
+            const biome = getBiomeAtWorldCoords(worldX, worldY, perlinHeight, perlinMoisture, perlinTemperature, perlinRiver, {
+                heightScale: parseFloat(heightScaleSlider.value),
+                moistureScale: parseFloat(moistureScaleSlider.value),
+                octaves: parseInt(octavesSlider.value),
+                persistence: parseFloat(persistenceSlider.value),
+                waterLevel: parseFloat(waterLevelSlider.value)
+            });
+
+            if (biome.includes('Water') || biome === 'river') {
+                player.resources.water += 1;
+                showMessage("Found water! 💧");
+            } else if (biome.includes('forest') || biome.includes('jungle') || biome.includes('taiga')) {
+                player.resources.wood += 1;
+                showMessage("Found wood! 🪵");
+            } else if (biome.includes('mountain') || biome.includes('spikes') || biome === 'desertHills' || biome === 'badlandsHills') {
+                player.resources.stone += 1;
+                showMessage("Found stone! 🪨");
+            } else {
+                showMessage("There is nothing to gather here.");
+            }
+            updateHUD(biome);
+        });
+
+        window.onload = () => {
+            generatePerlinMaps();
+            handleLoadAndResize();
+            gameLoop(0); 
+        };
+
+    </script>
+</body>
+</html>
