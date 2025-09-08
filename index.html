@@ -66,6 +66,13 @@
         #joystick, #actionButton {
             pointer-events: auto; /* But not the controls themselves */
         }
+        
+        #timeSliderContainer {
+            cursor: pointer;
+        }
+        #timeSliderContainer svg * {
+            pointer-events: none; /* Allow events to be captured by the container */
+        }
     </style>
 </head>
 <body class="bg-gray-900 text-gray-200">
@@ -107,6 +114,10 @@
                      <div class="flex justify-between items-center">
                         <span>🛖 Shelter:</span>
                         <span id="shelterStatus" class="text-red-400">No</span>
+                    </div>
+                     <div class="flex justify-between items-center mt-1">
+                        <span>☀️ Time:</span>
+                        <span id="timeText">...</span>
                     </div>
                     <div class="flex justify-between items-center text-xs text-gray-400 pt-1 border-t border-gray-700 mt-1">
                         <span>Visible Trees:</span>
@@ -167,6 +178,20 @@
             </div>
         </div>
 
+        <!-- Circular Time Slider -->
+        <div id="timeSliderContainer" class="absolute bottom-4 right-4 z-40 w-32 h-32">
+            <svg viewBox="0 0 100 100">
+                <circle cx="50" cy="50" r="40" class="stroke-gray-700" stroke-width="8" fill="rgba(31, 41, 55, 0.7)"></circle>
+                <path id="timeSliderProgress" class="stroke-yellow-400" stroke-width="8" fill="none" stroke-linecap="round"></path>
+                <text x="50" y="15" text-anchor="middle" font-size="14">🕛</text> <!-- Midnight -->
+                <text x="88" y="55" text-anchor="middle" font-size="14">☀️</text> <!-- Sunrise (approx) -->
+                <text x="50" y="95" text-anchor="middle" font-size="14">🕕</text> <!-- Noon -->
+                <text x="12" y="55" text-anchor="middle" font-size="14">🌙</text> <!-- Sunset (approx) -->
+                <circle id="timeSliderHandle" cx="50" cy="10" r="6" class="fill-white"></circle>
+            </svg>
+        </div>
+
+
         <!-- Mobile Controls -->
         <div id="mobileControls" class="fixed bottom-0 left-0 right-0 p-8 flex justify-between items-end z-40 hidden">
             <div id="joystick" class="w-32 h-32 bg-gray-500 bg-opacity-30 rounded-full relative">
@@ -215,10 +240,6 @@
                 <div class="flex flex-col items-center">
                     <label for="playerSpeedSlider" class="text-sm font-semibold mb-2">Player Speed: <span id="playerSpeedValue">2</span></label>
                     <input type="range" id="playerSpeedSlider" min="0.5" max="5" step="0.5" value="2" class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                </div>
-                <div class="flex flex-col items-center">
-                    <label for="sunAngleSlider" class="text-sm font-semibold mb-2">Sun Angle: <span id="sunAngleValue">45</span>°</label>
-                    <input type="range" id="sunAngleSlider" min="0" max="360" value="45" class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
                 </div>
                 <div class="flex flex-col items-center">
                     <label for="waterLevelSlider" class="text-sm font-semibold mb-2">Water Level: <span id="waterLevelValue">0.45</span></label>
@@ -495,7 +516,8 @@
         }
         
         function getPixelLightness(x, y, heightValue, perlinHeight, sliders) {
-            const { sunAngle, heightScale, octaves, persistence } = sliders;
+            const sunAngle = 90; // Use a fixed top-down angle for consistent terrain shadows
+            const { heightScale, octaves, persistence } = sliders;
             const sunAngleRad = sunAngle * (Math.PI / 180);
             const lightVector = [Math.cos(sunAngleRad), Math.sin(sunAngleRad)];
             
@@ -541,6 +563,53 @@
              return Math.max(1, baseRadius / multiplier);
         }
 
+        // --- DAY/NIGHT CYCLE HELPERS ---
+        function lerpColor(c1, c2, t) {
+            return [
+                c1[0] + (c2[0] - c1[0]) * t,
+                c1[1] + (c2[1] - c1[1]) * t,
+                c1[2] + (c2[2] - c1[2]) * t,
+            ];
+        }
+
+        function getTimeOfDayInfo() {
+            const nightTint = [0.45, 0.5, 0.75];
+            const sunriseTint = [1.0, 0.75, 0.6];
+            const dayTint = [1.0, 1.0, 1.0];
+
+            let tint;
+            
+            if (timeOfDay >= 0 && timeOfDay < 0.25) { // Night -> Sunrise
+                const t = timeOfDay / 0.25;
+                tint = lerpColor(nightTint, sunriseTint, t);
+            } else if (timeOfDay >= 0.25 && timeOfDay < 0.5) { // Sunrise -> Day
+                const t = (timeOfDay - 0.25) / 0.25;
+                tint = lerpColor(sunriseTint, dayTint, t);
+            } else if (timeOfDay >= 0.5 && timeOfDay < 0.75) { // Day -> Sunset
+                const t = (timeOfDay - 0.5) / 0.25;
+                tint = lerpColor(dayTint, sunriseTint, t); // Reuse sunrise for sunset
+            } else { // Sunset -> Night
+                const t = (timeOfDay - 0.75) / 0.25;
+                tint = lerpColor(sunriseTint, nightTint, t);
+            }
+
+            const lightSine = Math.sin(timeOfDay * Math.PI * 2); 
+            const lightLevel = 0.2 + (Math.max(0, lightSine) * 0.8);
+            
+            return {
+                lightLevel: lightLevel,
+                tint: tint
+            };
+        }
+
+        function formatTime(time) {
+            const hours = Math.floor(time * 24);
+            const minutes = Math.floor(((time * 24) - hours) * 60);
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            const displayHours = hours % 12 === 0 ? 12 : hours % 12;
+            return `${displayHours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')} ${ampm}`;
+        }
+
         // WORLD GENERATION & DRAWING
         const minimapCanvas = document.getElementById('minimapCanvas');
         const minimapCtx = minimapCanvas.getContext('2d');
@@ -556,17 +625,16 @@
 
         function getSliderValues() {
              return {
-                heightScale: parseFloat(heightScaleSlider.value),
-                moistureScale: parseFloat(moistureScaleSlider.value),
-                pixelScale: parseFloat(pixelScaleSlider.value),
-                octaves: parseInt(octavesSlider.value),
-                persistence: parseFloat(persistenceSlider.value),
-                playerSpeed: parseFloat(playerSpeedSlider.value),
-                sunAngle: parseFloat(sunAngleSlider.value),
-                waterLevel: parseFloat(waterLevelSlider.value),
-                treeDensityMultiplier: parseFloat(treeDensitySlider.value),
-                fishDensityMultiplier: parseFloat(fishDensitySlider.value)
-            };
+                 heightScale: parseFloat(heightScaleSlider.value),
+                 moistureScale: parseFloat(moistureScaleSlider.value),
+                 pixelScale: parseFloat(pixelScaleSlider.value),
+                 octaves: parseInt(octavesSlider.value),
+                 persistence: parseFloat(persistenceSlider.value),
+                 playerSpeed: parseFloat(playerSpeedSlider.value),
+                 waterLevel: parseFloat(waterLevelSlider.value),
+                 treeDensityMultiplier: parseFloat(treeDensitySlider.value),
+                 fishDensityMultiplier: parseFloat(fishDensitySlider.value)
+             };
         }
 
         function manageCache() {
@@ -751,15 +819,54 @@
                          const objScreenY = (obj.y - startTileY) * pixelScale;
                          
                          if (objScreenX >= -pixelScale && objScreenX <= viewportWidth && objScreenY >= -pixelScale && objScreenY <= viewportHeight) {
-                            if (obj.type === 'tree') visibleTrees++;
-                            else if (obj.type === 'fish') visibleFish++;
+                             if (obj.type === 'tree') visibleTrees++;
+                             else if (obj.type === 'fish') visibleFish++;
 
-                            ctx.fillStyle = obj.color;
-                            ctx.fillText(obj.emoji, objScreenX + pixelScale / 2, objScreenY + pixelScale / 2);
+                             ctx.fillStyle = obj.color;
+                             ctx.fillText(obj.emoji, objScreenX + pixelScale / 2, objScreenY + pixelScale / 2);
                          }
                     }
                 }
             }
+
+            // --- DAY/NIGHT CYCLE OVERLAY AND OBJECTS ---
+            const timeInfo = getTimeOfDayInfo();
+            
+            // Draw Sun & Moon
+            const centerX = canvas.width / 2;
+            const horizonY = canvas.height / 2 + 50;
+            const skyPathRadius = Math.min(canvas.width, canvas.height) * 0.7;
+            const angle = (timeOfDay - 0.25) * 2 * Math.PI;
+            const sunX = centerX - Math.cos(angle) * skyPathRadius;
+            const sunY = horizonY - Math.sin(angle) * skyPathRadius;
+            const moonX = centerX + Math.cos(angle) * skyPathRadius;
+            const moonY = horizonY + Math.sin(angle) * skyPathRadius;
+
+            // Draw Sun
+            if (sunY < horizonY + 20) {
+                ctx.fillStyle = 'rgba(255, 255, 150, 0.9)';
+                ctx.beginPath();
+                ctx.arc(sunX, sunY, 30, 0, 2 * Math.PI);
+                ctx.fill();
+            }
+
+            // Draw Moon
+            if (moonY < horizonY + 20) {
+                ctx.fillStyle = 'rgba(230, 230, 240, 0.8)';
+                ctx.beginPath();
+                ctx.arc(moonX, moonY, 25, 0, 2 * Math.PI);
+                ctx.fill();
+            }
+
+            // Apply lighting overlay
+            const overlayAlpha = (1 - timeInfo.lightLevel) * 0.75;
+            const tint = timeInfo.tint;
+            const overlayR = tint[0] * 30;
+            const overlayG = tint[1] * 40;
+            const overlayB = tint[2] * 80;
+            
+            ctx.fillStyle = `rgba(${overlayR}, ${overlayG}, ${overlayB}, ${overlayAlpha})`;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
             
             playerDiv.style.left = `${viewportWidth / 2}px`;
             playerDiv.style.top = `${viewportHeight / 2}px`;
@@ -891,7 +998,6 @@
         const octavesSlider = document.getElementById('octavesSlider');
         const persistenceSlider = document.getElementById('persistenceSlider');
         const playerSpeedSlider = document.getElementById('playerSpeedSlider');
-        const sunAngleSlider = document.getElementById('sunAngleSlider');
         const waterLevelSlider = document.getElementById('waterLevelSlider');
         const treeDensitySlider = document.getElementById('treeDensitySlider');
         const fishDensitySlider = document.getElementById('fishDensitySlider');
@@ -904,7 +1010,6 @@
         const octavesValueSpan = document.getElementById('octavesValue');
         const persistenceValueSpan = document.getElementById('persistenceValue');
         const playerSpeedValueSpan = document.getElementById('playerSpeedValue');
-        const sunAngleValueSpan = document.getElementById('sunAngleValue');
         const waterLevelValueSpan = document.getElementById('waterLevelValue');
         const treeDensityValueSpan = document.getElementById('treeDensityValue');
         const fishDensityValueSpan = document.getElementById('fishDensityValue');
@@ -921,6 +1026,7 @@
         const keysText = document.getElementById('keysText');
         const treeCountText = document.getElementById('treeCountText');
         const fishCountText = document.getElementById('fishCountText');
+        const timeText = document.getElementById('timeText');
 
         const messageBox = document.getElementById('messageBox');
         const messageText = document.getElementById('messageText');
@@ -939,6 +1045,10 @@
         const craftShelterButton = document.getElementById('craftShelterButton');
         const shelterWoodCostSpan = document.getElementById('shelterWoodCost');
         const shelterStoneCostSpan = document.getElementById('shelterStoneCost');
+        
+        const timeSliderContainer = document.getElementById('timeSliderContainer');
+        const timeSliderProgress = document.getElementById('timeSliderProgress');
+        const timeSliderHandle = document.getElementById('timeSliderHandle');
 
         const SHELTER_COST_WOOD = 10;
         const SHELTER_COST_STONE = 5;
@@ -948,7 +1058,9 @@
         let isGamePaused = false;
         let isDebugViewActive = false;
         let keys = {};
-
+        
+        let timeOfDay = 0.25; // 0.0 to 1.0, where 0.25 is sunrise, 0.5 is noon
+        
         let player = {
             x: 0,
             y: 0,
@@ -961,7 +1073,7 @@
                 fish: {}
             }
         };
-        let thirstRate = 0.5; // Increased thirst rate for more challenge
+        let thirstRate = 0.5;
 
         let lastFrameTime = 0;
         let fpsUpdateInterval = 100; // in milliseconds
@@ -1039,6 +1151,7 @@
             speedModifierText.textContent = `${getMovementSpeedModifier(currentBiome)}x`;
             posText.textContent = `${Math.round(player.x)}, ${Math.round(player.y)}`;
             biomeText.textContent = currentBiome;
+            timeText.textContent = formatTime(timeOfDay);
 
             treeCountText.textContent = visibleTrees;
             fishCountText.textContent = visibleFish;
@@ -1300,13 +1413,6 @@
         playerSpeedSlider.addEventListener('input', () => {
             playerSpeedValueSpan.textContent = playerSpeedSlider.value;
         });
-        sunAngleSlider.addEventListener('input', () => {
-            sunAngleValueSpan.textContent = sunAngleSlider.value;
-            if (!isGenerating) {
-                chunkCache.clear();
-                drawWorld();
-            }
-        });
         
         canvas.addEventListener('wheel', (e) => {
             e.preventDefault();
@@ -1375,6 +1481,67 @@
             craftingMenu.classList.add('hidden');
             togglePause(false);
         });
+
+        // --- TIME SLIDER LOGIC ---
+        function polarToCartesian(centerX, centerY, radius, angleInDegrees) {
+            const angleInRadians = (angleInDegrees - 90) * Math.PI / 180.0;
+            return {
+                x: centerX + (radius * Math.cos(angleInRadians)),
+                y: centerY + (radius * Math.sin(angleInRadians))
+            };
+        }
+
+        function describeArc(x, y, radius, startAngle, endAngle) {
+            if (endAngle >= 359.99) endAngle = 359.99;
+            const start = polarToCartesian(x, y, radius, endAngle);
+            const end = polarToCartesian(x, y, radius, startAngle);
+            const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1";
+            const d = ["M", end.x, end.y, "A", radius, radius, 0, largeArcFlag, 1, start.x, start.y].join(" ");
+            return d;
+        }
+
+        function updateCircularSliderUI(time) {
+            const angle = time * 360;
+            const handlePos = polarToCartesian(50, 50, 40, angle);
+            timeSliderHandle.setAttribute('cx', handlePos.x);
+            timeSliderHandle.setAttribute('cy', handlePos.y);
+            timeSliderProgress.setAttribute('d', describeArc(50, 50, 40, 0, angle));
+        }
+        
+        function handleTimeSliderInteraction(event) {
+            event.preventDefault();
+            const rect = timeSliderContainer.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+
+            function onMove(moveEvent) {
+                const clientX = moveEvent.touches ? moveEvent.touches[0].clientX : moveEvent.clientX;
+                const clientY = moveEvent.touches ? moveEvent.touches[0].clientY : moveEvent.clientY;
+                const angleRad = Math.atan2(clientY - centerY, clientX - centerX) + Math.PI / 2;
+                let angleDeg = angleRad * 180 / Math.PI;
+                if (angleDeg < 0) angleDeg += 360;
+                
+                timeOfDay = angleDeg / 360;
+                updateCircularSliderUI(timeOfDay);
+            }
+
+            function onEnd() {
+                window.removeEventListener('mousemove', onMove);
+                window.removeEventListener('mouseup', onEnd);
+                window.removeEventListener('touchmove', onMove);
+                window.removeEventListener('touchend', onEnd);
+            }
+
+            window.addEventListener('mousemove', onMove);
+            window.addEventListener('mouseup', onEnd);
+            window.addEventListener('touchmove', onMove);
+            window.addEventListener('touchend', onEnd);
+            onMove(event); // Handle initial click
+        }
+
+        timeSliderContainer.addEventListener('mousedown', handleTimeSliderInteraction);
+        timeSliderContainer.addEventListener('touchstart', handleTimeSliderInteraction);
+
 
         // --- MOBILE CONTROLS ---
         function setupMobileControls() {
@@ -1450,10 +1617,10 @@
             generatePerlinMaps();
             handleLoadAndResize();
             setupMobileControls();
+            updateCircularSliderUI(timeOfDay);
             gameLoop(0); 
         };
 
     </script>
 </body>
 </html>
-
