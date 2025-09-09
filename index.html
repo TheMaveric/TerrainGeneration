@@ -784,16 +784,15 @@
                          if (objScreenX >= -pixelScale && objScreenX <= viewportWidth && objScreenY >= -pixelScale && objScreenY <= viewportHeight) {
                              if (obj.type === 'tree') {
                                  visibleTrees++;
-                                 ctx.font = `${pixelScale}px sans-serif`;
+                                 const baseSize = pixelScale * 1.2;
+                                 const heightScale = obj.height * 0.5;
+                                 ctx.font = `${baseSize * heightScale}px sans-serif`;
                                  const renderX = objScreenX + pixelScale / 2 + (obj.offsetX || 0) * pixelScale;
                                  const renderY = objScreenY + pixelScale / 2 + (obj.offsetY || 0) * pixelScale;
                                  
-                                 ctx.save();
-                                 ctx.textBaseline = 'middle';
-                                 ctx.translate(renderX, renderY);
-                                 ctx.scale(1, Math.abs(obj.height));
-                                 ctx.fillText(obj.emoji, 0, 0);
-                                 ctx.restore();
+                                 ctx.textBaseline = 'bottom';
+                                 ctx.textAlign = 'center';
+                                 ctx.fillText(obj.emoji, renderX, renderY);
                              } else if (obj.type === 'fish') {
                                  visibleFish++;
                                  ctx.globalAlpha = 0.6 + Math.sin(Date.now() / 200 + obj.x) * 0.3;
