@@ -798,10 +798,60 @@
         const Weather = { type: '☀️', until: 0 }; // ☀️ (clear) | 🌧️ (rain) | ❄️ (snow)
         let season = 0.25; // 0..1 (winter→spring→summer→autumn bias)
 
+        // --- Wind (global, slow-changing direction + gusts + spatial coherence) ---
+        let windTime = 0;
+
+        const Wind = {
+            baseAngle: 0,      // radians; slowly meanders
+            speed: 0.25,       // current wind strength (0..~2)
+            targetSpeed: 0.25, // eased toward by updateWind()
+        };
+
+        function updateWind(dt) {
+            if (!perlin) return; // safety in case called very early
+            windTime += Math.max(0.001, dt);
+
+            // slowly rotate wind direction using low-frequency noise
+            const turnNoise = (perlin.temperature.noise(windTime * 0.02, 0) - 0.5) * 0.25;
+            Wind.baseAngle += turnNoise * dt;
+
+            // weather baseline
+            const weatherBase =
+                Weather.type === '🌧️' ? 0.9 :
+                    Weather.type === '❄️' ? 0.6 : 0.5;
+
+            // long wave variability (breeze rises/falls)
+            const slow = perlin.moisture.noise(windTime * 0.05, 7.3); // 0..1
+            // gusts (spiky)
+            const gustRaw = perlin.object.noise(windTime * 0.6, 13.7); // 0..1
+            const gust = Math.max(0, gustRaw - 0.65) * 2.2;
+
+            Wind.targetSpeed = weatherBase * (0.5 + 0.7 * slow) + gust;
+
+            // ease current speed toward target
+            const ease = 0.8;
+            Wind.speed += (Wind.targetSpeed - Wind.speed) * Math.min(1, ease * dt);
+        }
+
+        // Spatially coherent local wind at world coords (wx, wy)
+        function windAt(wx, wy) {
+            const t = windTime;
+            const local = perlin.object.noise(wx / 120 + t * 0.03, wy / 120 + t * 0.03); // 0..1
+            const angle = Wind.baseAngle + (local - 0.5) * 0.8; // ±0.4 rad variation
+            const pocket = 0.8 + 0.4 * perlin.river.noise(wx / 260 + t * 0.07, wy / 260 - t * 0.05);
+            const strength = Wind.speed * pocket;
+            return { dirX: Math.cos(angle), dirY: Math.sin(angle), strength };
+        }
+
+
         // --- World life & hazards (new globals) ---
         let fireflies = [];                    // ephemeral night particles
         let waterFxQuality = 1;                // you already have this below, keep highest one (remove duplicate if present)
         let frameTick = 0;                     // "
+        // === Fireflies config ===
+        const FIREFLY_NIGHT_LIGHT_LEVEL = 0.45;  // from getTimeOfDayInfo().lightLevel
+        const FIREFLY_MAX_PER_CHUNK = 6;         // cap per visible chunk
+
 
         // Fireflies settings
         const FIREFLY_MAX = 36;
@@ -1061,7 +1111,36 @@
                 }
             }
 
+            // --- Firefly nests (shoreline cells touching friendly land biomes) ---
+            const fireflyNests = [];
+            // seeded RNG so nests are deterministic per chunk+seed
+            const nestRand = seededRandom(chunkX * 73856093 ^ chunkY * 19349663 ^ seed);
 
+            function isLandFriendly(ii) {
+                const name = BIOME_NAME[biomeIdx[ii]];
+                // prefer treed/vegetated land near water
+                return name && (/forest|swamp|jungle/i.test(name) || name === 'plain');
+            }
+
+            for (let s = 0; s < shoreline.length; s++) {
+                const i = shoreline[s];
+                const x = i % CHUNK_SIZE, y = (i / CHUNK_SIZE) | 0;
+
+                // check 4-neighbors for a suitable land tile
+                const nb = [
+                    [x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]
+                ];
+                let good = false;
+                for (const [xx, yy] of nb) {
+                    if (xx < 0 || yy < 0 || xx >= CHUNK_SIZE || yy >= CHUNK_SIZE) continue;
+                    const ii = yy * CHUNK_SIZE + xx;
+                    if (!waterMask[ii] && isLandFriendly(ii)) { good = true; break; }
+                }
+                if (good && nestRand() < 0.18) {
+                    // store local coords (tile space inside this chunk)
+                    fireflyNests.push({ x, y });
+                }
+            }
 
             // --- Biome-aware river rendering & bank effects ---
             const riverHints = [];
@@ -1144,11 +1223,15 @@
                         y: Math.round(c.y),
                         type: 'tree',
                         emoji: treeType.emoji,
-                        height: height,
+                        height,
                         offsetX,
                         offsetY,
-                        swayPhase: seededRandom(c.x * 777 + c.y * 333 + seed + 9)() * Math.PI * 2 // NEW
+                        swayPhase: seededRandom(c.x * 777 + c.y * 333 + seed + 9)() * Math.PI * 2,
+                        // NEW: spring state (bending with inertia)
+                        bend: 0,       // current tip offset in pixels
+                        bendVel: 0     // velocity of the bend (px/s)
                     };
+
                 }
             );
 
@@ -1225,7 +1308,17 @@
             );
             objects.push(...floaters.filter(f => f));
             objects.push(...trees.filter(t => t !== null), ...fish.filter(f => f !== null));
-            chunkCache.set(key, { canvas: chunkCanvas, objects, riverHints, waterMask, shoreline, biomeIdx });
+            chunkCache.set(key, {
+                canvas: chunkCanvas,
+                objects,
+                riverHints,
+                waterMask,
+                shoreline,
+                biomeIdx,
+                fireflyNests,
+                fireflies: [] // runtime instances appear at night
+            });
+
             manageCache();
         }
 
@@ -1257,36 +1350,6 @@
             const seed = parseInt(seedInput.value) || 0;
             const timeInfo = getTimeOfDayInfo();
             const fishDayFactor = Math.max(0.4, timeInfo.lightLevel);
-
-            // --- Fireflies (night near water/forest) ---
-            if (timeInfo.lightLevel < 0.45) {
-                // try to keep a soft cap of fireflies around the current view
-                const { pixelScale } = sliders;
-                const viewTilesX = vw / pixelScale, viewTilesY = vh / pixelScale;
-                const minX = Math.floor(player.x - viewTilesX / 2) - FIREFLY_VIEW_MARGIN;
-                const minY = Math.floor(player.y - viewTilesY / 2) - FIREFLY_VIEW_MARGIN;
-                const maxX = Math.ceil(player.x + viewTilesX / 2) + FIREFLY_VIEW_MARGIN;
-                const maxY = Math.ceil(player.y + viewTilesY / 2) + FIREFLY_VIEW_MARGIN;
-
-                // spawn a few per frame if under cap
-                for (let t = 0; t < FIREFLY_SPAWN_TRIES && fireflies.length < FIREFLY_MAX; t++) {
-                    const wx = Math.floor(minX + Math.random() * (maxX - minX));
-                    const wy = Math.floor(minY + Math.random() * (maxY - minY));
-                    const idx = getBiomeIndexFromCache(wx, wy);
-                    const name = idx >= 0 ? BIOME_NAME[idx] : getBiomeAtWorldCoords(wx, wy, perlin, sliders);
-                    const nearNature = name && (name.includes('forest') || name.includes('swamp') || isWaterLikeBiomeName(name));
-                    if (!nearNature) continue;
-
-                    fireflies.push({
-                        x: wx + Math.random(), y: wy + Math.random(),
-                        vx: (Math.random() - 0.5) * 0.1, vy: -0.02 - Math.random() * 0.03,
-                        life: 1.5 + Math.random() * 1.5,
-                        phase: Math.random() * Math.PI * 2
-                    });
-                }
-            } else {
-                fireflies.length = 0; // clear in daytime
-            }
 
             // update + draw
             for (let i = fireflies.length - 1; i >= 0; i--) {
@@ -1543,12 +1606,15 @@
 
                     if (obj.type === 'tree') {
                         visibleTrees++;
+
                         if (!obj._fontCache || obj._fontCache.scale !== pixelScale) {
                             const px = Math.max(8, Math.round(pixelScale * 1.2 * (obj.height * 0.5)));
                             obj._fontCache = { scale: pixelScale, px };
                         }
+
                         ctx.font = `${obj._fontCache.px}px sans-serif`;
-                        ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'bottom';
 
                         const tileLeft = Math.floor(objScreenX);
                         const tileTop = Math.floor(objScreenY);
@@ -1558,14 +1624,34 @@
                         const jxMax = (pixelScale / 2) - basePad;
                         const jx = clamp((obj.offsetX || 0) * pixelScale, -jxMax, jxMax);
 
-                        const windMul = (Weather.type === '🌧️') ? 1.0 : 0.55;                  // heavier during rain
-                        const swayX = Math.sin(frameTick * 0.05 + (obj.swayPhase || 0)) * Math.min(pixelScale * 0.25, 3) * windMul;
+                        // --- wind sway (top moves more than bottom) ---
+                        const windMul = (Weather.type === '🌧️') ? 1.0 : 0.55;
+                        const phase = frameTick * 0.05 + (obj.swayPhase || 0);
 
-                        const baseX = tileLeft + Math.floor(pixelScale / 2 + jx + swayX);      // <— was just jx
+                        // how far the TIP should shift (in px)
+                        const tipShiftMax = Math.min(pixelScale * 0.35, 4) * windMul * (0.8 + 0.1 * (obj.height || 1));
+                        const tipShift = Math.sin(phase) * tipShiftMax;
 
+                        // shear factor: shift-per-pixel of height
+                        const shearX = tipShift / obj._fontCache.px;
+
+                        // anchor the bottom of the tree, then shear so the top bends
+                        const baseX = tileLeft + Math.floor(pixelScale / 2 + jx);
                         const baseY = tileBottom - basePad;
-                        ctx.fillText(obj.emoji, baseX, baseY);
-                    } else if (obj.type === 'fish') {
+
+                        ctx.save();
+                        ctx.translate(baseX, baseY);
+
+                        // optional tiny rotation adds a bit of organic feel (pivot at base)
+                        ctx.rotate(tipShift * 0.01);
+
+                        // shear horizontally: [ 1 0 ; shearX 1 ]
+                        ctx.transform(1, 0, shearX, 1, 0, 0);
+
+                        ctx.fillText(obj.emoji, 0, 0);
+                        ctx.restore();
+                    }
+                    else if (obj.type === 'fish') {
                         visibleFish++;
                         ctx.globalAlpha = 0.6 + Math.sin(frameTick / 12 + obj.x) * 0.3;
                         ctx.font = `${pixelScale * 0.8}px sans-serif`;
@@ -1630,94 +1716,84 @@
                 ctx.globalAlpha = 1.0;
             }
 
-            // --- Fireflies at night (near water/forest) ---
-            if (timeInfo.lightLevel < 0.38) {
-                // Aim for a density that scales with the screen size
-                const target = clamp(Math.floor((vw * vh) / 90000), 20, 100);
+            // --- Fireflies: update + render (glowing, pulsing, night-only) ---
+            if (timeInfo.lightLevel < FIREFLY_NIGHT_LIGHT_LEVEL) {
+                for (const { chunk, screenX, screenY, cx, cy } of drawList) {
+                    // === Spawn near already-loaded trees ===
+                    const anchors = chunk.objects ? chunk.objects.filter(o => o.type === 'tree') : [];
+                    if (anchors.length === 0) continue;
 
-                // Ensure we have the visible chunks we can spawn in (already built in drawList)
-                while (fireflies.length < target && drawList.length) {
-                    const pick = drawList[(Math.random() * drawList.length) | 0];
-                    if (!pick) break;
-                    const { chunk, cx, cy } = pick;
+                    if (!chunk.fireflies) chunk.fireflies = [];
 
-                    let wx, wy;
+                    // Target count scales with tree density but is capped per chunk
+                    const target = Math.min(
+                        FIREFLY_MAX_PER_CHUNK,
+                        Math.max(1, Math.floor(anchors.length * 0.4))
+                    );
 
-                    // Prefer shoreline pixels (nice look) if available
-                    if (chunk.shoreline && chunk.shoreline.length) {
-                        const i = chunk.shoreline[(Math.random() * chunk.shoreline.length) | 0];
-                        const lx = i % CHUNK_SIZE, ly = (i / CHUNK_SIZE) | 0;
-                        wx = cx * CHUNK_SIZE + lx + (Math.random() - 0.5) * 0.6;
-                        wy = cy * CHUNK_SIZE + ly + (Math.random() - 0.5) * 0.6;
-                    } else {
-                        // Otherwise: forest/swamp cell that is next to water
-                        let found = false;
-                        for (let t = 0; t < 10 && !found; t++) {
-                            const lx = (Math.random() * CHUNK_SIZE) | 0;
-                            const ly = (Math.random() * CHUNK_SIZE) | 0;
-                            const idx = ly * CHUNK_SIZE + lx;
-                            const b = chunk.biomeIdx[idx];
-                            if (!FIREFLY_BIOME_IDX.has(b)) continue;
-
-                            const left = lx > 0 ? chunk.waterMask[ly * CHUNK_SIZE + (lx - 1)] : 0;
-                            const right = lx < CHUNK_SIZE - 1 ? chunk.waterMask[ly * CHUNK_SIZE + (lx + 1)] : 0;
-                            const up = ly > 0 ? chunk.waterMask[(ly - 1) * CHUNK_SIZE + lx] : 0;
-                            const down = ly < CHUNK_SIZE - 1 ? chunk.waterMask[(ly + 1) * CHUNK_SIZE + lx] : 0;
-                            const nearWater = left || right || up || down;
-
-                            if (!nearWater) continue;
-
-                            wx = cx * CHUNK_SIZE + lx + (Math.random() - 0.5) * 0.6;
-                            wy = cy * CHUNK_SIZE + ly + (Math.random() - 0.5) * 0.6;
-                            found = true;
-                        }
-                        if (!wx) break; // try another chunk next loop
+                    while (chunk.fireflies.length < target) {
+                        const t = anchors[(Math.random() * anchors.length) | 0]; // pick a tree
+                        const jitter = () => (Math.random() - 0.5) * 2.0;        // ~±1 tile radius
+                        chunk.fireflies.push({
+                            x: t.x + jitter(),
+                            y: t.y + jitter(),
+                            homeX: t.x + jitter(),
+                            homeY: t.y + jitter(),
+                            phase: Math.random() * Math.PI * 2
+                        });
                     }
 
-                    fireflies.push({
-                        x: wx, y: wy,
-                        vx: 0, vy: 0,
-                        phase: Math.random() * Math.PI * 2
-                    });
-                }
 
-                // Update + draw (on top of weather/lighting)
-                ctx.save();
-                ctx.globalCompositeOperation = 'lighter'; // subtle glow add
-                for (let i = fireflies.length - 1; i >= 0; i--) {
-                    const f = fireflies[i];
-                    f.phase += deltaTime * (1.5 + Math.random() * 0.5);
+                    // update & render (use additive blending so they "lighten" the scene)
+                    ctx.save();
+                    ctx.globalCompositeOperation = 'lighter';
 
-                    // Tiny wander + bob
-                    f.vx += (Math.random() - 0.5) * 0.02;
-                    f.vy += (Math.random() - 0.5) * 0.02;
-                    const sp = Math.hypot(f.vx, f.vy);
-                    if (sp > 0.06) { f.vx *= 0.92; f.vy *= 0.92; }
+                    for (const f of chunk.fireflies) {
+                        // gentle hovering + stay near home
+                        f.phase += deltaTime * (1.2 + (Weather.type === '🌧️' ? 0.6 : 0));
+                        f.x += (Math.random() - 0.5) * 0.06;
+                        f.y += (Math.random() - 0.5) * 0.06;
+                        const toHomeX = f.homeX - f.x, toHomeY = f.homeY - f.y;
+                        f.x += toHomeX * 0.015;
+                        f.y += toHomeY * 0.015;
 
-                    f.x += f.vx;
-                    f.y += f.vy + Math.sin(f.phase) * 0.01;
+                        // screen coords
+                        const sx = (f.x - startTileX) * pixelScale + screenX;
+                        const sy = (f.y - startTileY) * pixelScale + screenY;
 
-                    // Cull when far off-screen
-                    if (f.x < startTileX - 2 || f.x > endTileX + 2 || f.y < startTileY - 2 || f.y > endTileY + 2) {
-                        fireflies.splice(i, 1);
-                        continue;
+                        // pulse + tiny flicker (0.15 .. ~0.6)
+                        const pulse = 0.5 + 0.5 * Math.sin(f.phase * 2.3);
+                        const flicker = 0.85 + 0.15 * Math.sin(f.phase * 17.0 + f.x);
+                        const alpha = 0.15 + 0.45 * pulse * flicker;
+
+                        // skip if off-screen
+                        if (sx < -10 || sy < -10 || sx > vw + 10 || sy > vh + 10) continue;
+
+                        // soft glow
+                        const radius = Math.max(1.5, pixelScale * 0.6);
+                        const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, radius);
+                        // warm core → greenish edge like real fireflies
+                        g.addColorStop(0.0, `rgba(255,255,170,${alpha})`);
+                        g.addColorStop(0.6, `rgba(190,255,140,${alpha * 0.6})`);
+                        g.addColorStop(1.0, `rgba(190,255,140,0)`);
+                        ctx.fillStyle = g;
+                        ctx.beginPath(); ctx.arc(sx, sy, radius, 0, Math.PI * 2); ctx.fill();
+
+                        // tiny bright core
+                        ctx.globalAlpha = Math.min(0.9, alpha * 1.2);
+                        ctx.fillStyle = 'rgba(255,255,210,1)';
+                        ctx.fillRect(Math.round(sx), Math.round(sy), 1, 1);
+                        ctx.globalAlpha = 1.0;
                     }
 
-                    // Draw ✨
-                    const sx = (f.x - startTileX) * pixelScale;
-                    const sy = (f.y - startTileY) * pixelScale;
-                    const twinkle = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(f.phase * 2));
-                    ctx.globalAlpha = 0.6 * twinkle;
-                    ctx.font = `${Math.max(10, pixelScale * 0.7)}px sans-serif`;
-                    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-                    ctx.fillText('✨', sx, sy);
+                    ctx.restore();
                 }
-                ctx.restore();
             } else {
-                // Daytime → clear them
-                fireflies.length = 0;
+                // day: clear them so night respawns feel fresh
+                for (const { chunk } of drawList) {
+                    if (chunk.fireflies && chunk.fireflies.length) chunk.fireflies.length = 0;
+                }
             }
-
 
             // Keep player centered
             playerDiv.style.left = `${vw / 2}px`;
@@ -1942,6 +2018,8 @@
             // advance a cheap integer frame counter for bitwise patterns
             frameTick = (frameTick + 1) | 0;
             lastFrameTime = timestamp;
+
+            updateWind(deltaTime);
 
             if (timestamp - lastFpsUpdateTime > 100) {
                 const fps = 1 / deltaTime;
