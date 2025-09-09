@@ -286,19 +286,19 @@
         const FISH_TYPES = {
             // Common
             'cod': { emoji: '🐟', biomes: ['deepWater', 'shallowWater'], rarity: 0.5 },
-            'salmon': { emoji: '🐠', biomes: ['river', 'shallowWater'], rarity: 0.4 },
+            'salmon':     { emoji: '🐠', biomes: ['river','lowlandRiver','mountainRiver','deltaRiver','shallowWater'], rarity: 0.4 },
              // Temperate
-            'trout': { emoji: '🐟', biomes: ['river'], rarity: 0.3 },
+            'trout':      { emoji: '🐟', biomes: ['river','mountainRiver'], rarity: 0.3 },
             'mackerel': { emoji: '🎣', biomes: ['shallowWater'], rarity: 0.2 },
             // Tropical
             'clownfish': { emoji: '🐠', biomes: ['shallowWater', 'jungle'], rarity: 0.2 },
             'pufferfish': { emoji: '🐡', biomes: ['jungle', 'swamp', 'shallowWater'], rarity: 0.15 },
-            'piranha': { emoji: '🐟', biomes: ['jungle', 'river', 'swamp'], rarity: 0.1 },
+            'piranha':    { emoji: '🐟', biomes: ['river','marshRiver','swamp'], rarity: 0.1 },
             // Cold
-            'arctic char': { emoji: '🐟', biomes: ['frozenDeepWater', 'frozenShallowWater'], rarity: 0.4 },
-            'icefish': { emoji: '🧊', biomes: ['frozenDeepWater'], rarity: 0.2 },
+            'arctic char':{ emoji: '🐟', biomes: ['frozenDeepWater','frozenShallowWater','frozenRiver'], rarity: 0.4 },
+            'icefish':    { emoji: '🧊', biomes: ['frozenDeepWater','frozenRiver'], rarity: 0.2 },
             // Swamp/Murky
-            'catfish': { emoji: '🎣', biomes: ['swamp', 'river'], rarity: 0.3 },
+            'catfish':    { emoji: '🎣', biomes: ['swamp','river','marshRiver','lowlandRiver','deltaRiver'], rarity: 0.3 },
             // Deep Ocean
             'tuna': { emoji: '🐟', biomes: ['deepWater'], rarity: 0.2 },
             'swordfish': { emoji: '🗡️', biomes: ['deepWater'], rarity: 0.1 },
@@ -540,6 +540,11 @@
                 case 'shallowWater': case 'frozenShallowWater': return 0.6;
                 case 'jungle': case 'jungleHills': case 'swamp': case 'swampHills': return 0.7;
                 case 'snowyMountains': case 'taigaMountains': case 'snowyTaigaMountains': case 'mountain': case 'forestMountains': return 0.5;
+                case 'frozenRiver': return 0.3;
+                case 'marshRiver': return 0.35;
+                case 'mountainRiver': return 0.45;
+                case 'lowlandRiver': return 0.4;
+                case 'deltaRiver': return 0.4;
                 default: return 1.0;
             }
         }
@@ -572,7 +577,7 @@
         function getFishPlacementRadius(biome, sliders) {
             const multiplier = sliders.fishDensityMultiplier || 1;
             if (multiplier === 0) return 0;
-            if (biome.includes('Water') || biome === 'river') {
+            if (biome.includes('Water') || /river/i.test(biome)) {
                 return Math.max(2, 10 / multiplier);
             }
             return 0;
@@ -1068,7 +1073,10 @@
             player.x += moveX * sliders.playerSpeed * deltaTime * 10 * speedModifier;
             player.y += moveY * sliders.playerSpeed * deltaTime * 10 * speedModifier;
 
-            const isSwimming = (currentBiome.includes('Water') || currentBiome === 'river');
+            // REPLACE this line:
+            // const isSwimming = (currentBiome.includes('Water') || currentBiome === 'river');
+            // WITH:
+            const isSwimming = (currentBiome.includes('Water') || /river/i.test(currentBiome));
             playerEmojiSpan.textContent = isSwimming ? '🏊' : '🚶';
 
             if (moveX > 0) playerEmojiSpan.style.transform = 'scaleX(-1)';
