@@ -308,9 +308,12 @@
                 </div>
                 <div class="flex flex-col items-center">
                     <label for="fishDensitySlider" class="text-sm font-semibold mb-2 text-gray-300">Fish
-                        Density: <span id="fishDensityValue">1.0</span>x</label>
-                    <input type="range" id="fishDensitySlider" min="0.0" max="3.0" step="0.1" value="1.0"
+                        Density: <span id="fishDensityValue">2.2</span>x
+                    </label>
+
+                    <input type="range" id="fishDensitySlider" min="0.0" max="3.0" step="0.1" value="2.2"
                         class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600">
+
                 </div>
                 <div class="flex flex-col items-center">
                     <label for="mapScaleSlider" class="text-sm font-semibold mb-2 text-gray-300">Map
@@ -683,11 +686,30 @@
             const displayHours = hours % 12 === 0 ? 12 : hours % 12;
             return `${displayHours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')} ${ampm}`;
         }
+        // --- Water helpers & river flow sampling (global) ---
+        function isWaterLikeBiomeName(b) {
+            return b && (b.includes('Water') || /river/i.test(b));
+        }
+
+        // Pick a tiny local flow vector from riverHints for world coords (wx, wy)
+        function getRiverFlowAt(wx, wy, chunk) {
+            if (!chunk || !chunk.riverHints || !chunk.riverHints.length) return { x: 0, y: 0 };
+            const cx = Math.floor(wx / CHUNK_SIZE), cy = Math.floor(wy / CHUNK_SIZE);
+            const lx = Math.round(wx - cx * CHUNK_SIZE);
+            const ly = Math.round(wy - cy * CHUNK_SIZE);
+            let best = null, bestD = 2;
+            for (const h of chunk.riverHints) {
+                const d = Math.abs(h.x - lx) + Math.abs(h.y - ly);
+                if (d < bestD) { bestD = d; best = h; if (d === 0) break; }
+            }
+            return best && best.flow ? best.flow : { x: 0, y: 0 };
+        }
 
         // =================================================================================
         // CHUNKS AND DRAWING
         // =================================================================================
         let perlin, isGenerating = false, isGamePaused = false, isDebugViewActive = false, isContourOverlayActive = false;
+        let showSpawnOverlay = false; // NEW: toggled with P
         // --- Weather & Season (globals) ---
         const Weather = { type: '☀️', until: 0 }; // ☀️ (clear) | 🌧️ (rain) | ❄️ (snow)
         let season = 0.25; // 0..1 (winter→spring→summer→autumn bias)
@@ -953,19 +975,45 @@
 
             const fish = PoissonDisk.generatePointsForChunk(chunkX, chunkY, perlin, sliders, seed,
                 getFishPlacementRadius,
-                (biome) => biome.includes('Water') || biome === 'river',
+                (biome) => biome.includes('Water') || /river/i.test(biome),
                 (c) => {
                     const possibleFish = Object.entries(FISH_TYPES).filter(([_, f]) => f.biomes.includes(c.biome));
                     if (possibleFish.length === 0) return null;
+
+                    // Weighted pick by rarity (no early return!)
                     const rand = seededRandom(c.x * c.y + seed)();
-                    let totalRarity = possibleFish.reduce((sum, [_, f]) => sum + f.rarity, 0);
+                    const totalRarity = possibleFish.reduce((sum, [, f]) => sum + f.rarity, 0);
                     let choice = rand * totalRarity;
-                    for (const [name, fishData] of possibleFish) {
-                        if (choice < fishData.rarity) return { x: Math.round(c.x), y: Math.round(c.y), type: 'fish', name, emoji: fishData.emoji };
-                        choice -= fishData.rarity;
+                    let selected = possibleFish[possibleFish.length - 1];
+                    for (const entry of possibleFish) {
+                        const [, f] = entry;
+                        if (choice < f.rarity) { selected = entry; break; }
+                        choice -= f.rarity;
                     }
-                    const [name, fishData] = possibleFish[possibleFish.length - 1];
-                    return { x: Math.round(c.x), y: Math.round(c.y), type: 'fish', name, emoji: fishData.emoji };
+                    const [name, fishData] = selected;
+
+                    // Motion/state present for ALL fish
+                    let baseSpeed = (/river/i.test(c.biome) ? 1.8 : 1.1);
+                    if (/frozen/i.test(c.biome)) baseSpeed *= 0.8;
+                    if (/deltaRiver|marshRiver/i.test(c.biome)) baseSpeed *= 1.1;
+
+                    const dirRand = seededRandom(c.x * 41 + c.y * 73 + seed + 5)();
+                    const theta = dirRand * Math.PI * 2;
+
+                    return {
+                        x: Math.round(c.x),
+                        y: Math.round(c.y),
+                        type: 'fish',
+                        name,
+                        emoji: fishData.emoji,
+
+                        vx: Math.cos(theta) * 0.5,
+                        vy: Math.sin(theta) * 0.5,
+                        speed: baseSpeed,
+                        phase: seededRandom(c.x * 17 + c.y * 29 + seed + 6)() * Math.PI * 2,
+                        homeX: Math.round(c.x),
+                        homeY: Math.round(c.y),
+                    };
                 }
             );
 
@@ -974,9 +1022,9 @@
             manageCache();
         }
 
-        function drawWorld() {
+        function drawWorld(deltaTime = 0) {
             if (isGenerating || !perlin) return { visibleTrees: 0, visibleFish: 0 };
-            if (isDebugViewActive) { drawDebugNoiseView(); return { visibleTrees: 0, visibleFish: 0, visibleBiomeCounts: {} }; }
+            if (isDebugViewActive) { return drawDebugSpawnsView(); }
 
             const sliders = getSliderValues();
             const { pixelScale } = sliders;
@@ -1024,6 +1072,76 @@
                         ctx.globalAlpha = 1.0;
                     }
 
+                    // --- Fish AI update (only when advancing time) ---
+                    if (deltaTime > 0 && chunk.objects && chunk.objects.length) {
+                        for (let i = 0; i < chunk.objects.length; i++) {
+                            const obj = chunk.objects[i];
+                            if (obj.type !== 'fish') continue;
+
+                            // Parameters
+                            const dayFactor = Math.max(0.4, getTimeOfDayInfo().lightLevel); // slower at night
+                            const speed = (obj.speed || 1.2) * dayFactor;
+
+                            // Gentle sinusoidal “wiggle” vector
+                            obj.phase = (obj.phase || 0) + deltaTime * 2.0;
+                            const wiggleX = Math.cos(obj.phase) * 0.15;
+                            const wiggleY = Math.sin(obj.phase) * 0.15;
+
+                            // Soft schooling: nudge toward home center
+                            const toHomeX = (obj.homeX - obj.x);
+                            const toHomeY = (obj.homeY - obj.y);
+                            const distHome = Math.hypot(toHomeX, toHomeY) + 1e-6;
+                            const homePull = Math.min(0.8, distHome * 0.02); // stronger when far
+                            const nHomeX = toHomeX / distHome;
+                            const nHomeY = toHomeY / distHome;
+
+                            // Flee player if too close
+                            const dPX = (player.x - obj.x);
+                            const dPY = (player.y - obj.y);
+                            const dToPlayer = Math.hypot(dPX, dPY) + 1e-6;
+                            let fleeX = 0, fleeY = 0;
+                            if (dToPlayer < 10) { // within ~10 tiles
+                                fleeX = -(dPX / dToPlayer) * 0.8;
+                                fleeY = -(dPY / dToPlayer) * 0.8;
+                            }
+
+                            // River current drift at fish location
+                            const flow = getRiverFlowAt(obj.x, obj.y, chunk);  // ~0..1
+                            const flowX = flow.x * 2.2;
+                            const flowY = flow.y * 2.2;
+
+                            // Desired heading = current vel + wiggle + schooling + flee + current
+                            let vx = (obj.vx || 0) + wiggleX + nHomeX * homePull + fleeX + flowX * deltaTime;
+                            let vy = (obj.vy || 0) + wiggleY + nHomeY * homePull + fleeY + flowY * deltaTime;
+
+                            // Normalize
+                            const vm = Math.hypot(vx, vy) || 1e-6;
+                            vx /= vm; vy /= vm;
+
+                            // Proposed move
+                            const step = speed * deltaTime;
+                            let nx = obj.x + vx * step;
+                            let ny = obj.y + vy * step;
+
+                            // Stay in water: if next biome isn’t water, steer back & dampen
+                            const nextBiome = getBiomeAtWorldCoords(Math.round(nx), Math.round(ny), perlin, sliders);
+                            if (!isWaterLikeBiomeName(nextBiome)) {
+                                // reflect roughly: push toward home and invert a bit
+                                vx = -vx * 0.4 + nHomeX * 0.8;
+                                vy = -vy * 0.4 + nHomeY * 0.8;
+                                const m2 = Math.hypot(vx, vy) || 1e-6;
+                                vx /= m2; vy /= m2;
+                                nx = obj.x + vx * step * 0.6;
+                                ny = obj.y + vy * step * 0.6;
+                            }
+
+                            // Commit
+                            obj.x = nx; obj.y = ny;
+                            obj.vx = vx; obj.vy = vy;
+                        }
+                    }
+
+
                     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
 
                     for (const obj of chunk.objects) {
@@ -1047,6 +1165,18 @@
                                 ctx.fillText(obj.emoji, objScreenX + pixelScale / 2, objScreenY + pixelScale / 2);
                                 ctx.globalAlpha = 1.0;
                             }
+                        }
+                        if (showSpawnOverlay) {
+                            ctx.save();
+                            ctx.lineWidth = 2;
+                            ctx.strokeStyle = (obj.type === 'fish') ? '#00FFFF' : '#00FF66'; // fish=cyan, trees=green
+                            ctx.strokeRect(
+                                Math.floor(objScreenX) + 1,
+                                Math.floor(objScreenY) + 1,
+                                Math.max(2, pixelScale - 2),
+                                Math.max(2, pixelScale - 2)
+                            );
+                            ctx.restore();
                         }
                     }
                 }
@@ -1198,30 +1328,100 @@
             return { visibleTrees, visibleFish, visibleBiomeCounts };
         }
 
-        function drawDebugNoiseView() {
+        // Replace your drawDebugNoiseView() with this:
+        function drawDebugSpawnsView() {
             const sliders = getSliderValues();
             const { pixelScale } = sliders;
-            const viewportWidth = viewport.clientWidth, viewportHeight = viewport.clientHeight;
+            const vw = viewport.clientWidth, vh = viewport.clientHeight;
 
-            canvas.width = viewportWidth; canvas.height = viewportHeight;
-            ctx.clearRect(0, 0, viewportWidth, viewportHeight);
+            canvas.width = vw; canvas.height = vh;
+            ctx.clearRect(0, 0, vw, vh);
             ctx.imageSmoothingEnabled = false;
 
-            const viewTilesX = viewportWidth / pixelScale, viewTilesY = viewportHeight / pixelScale;
+            const viewTilesX = vw / pixelScale, viewTilesY = vh / pixelScale;
             const startTileX = player.x - viewTilesX / 2, endTileX = player.x + viewTilesX / 2;
             const startTileY = player.y - viewTilesY / 2, endTileY = player.y + viewTilesY / 2;
 
-            for (let y = Math.floor(startTileY); y < Math.ceil(endTileY); y++) {
-                for (let x = Math.floor(startTileX); x < Math.ceil(endTileX); x++) {
-                    const noise = getOctaveNoise(x, y, perlin.river, 40, sliders.persistence, 10, sliders.mapScale);
-                    const r = noise * 255, b = (1 - noise) * 255;
-                    ctx.fillStyle = `rgb(${r}, 0, ${b})`;
-                    ctx.fillRect((x - startTileX) * pixelScale, (y - startTileY) * pixelScale, pixelScale, pixelScale);
+            // faint biome background (so markers have context)
+            for (let wy = Math.floor(startTileY); wy < Math.ceil(endTileY); wy++) {
+                for (let wx = Math.floor(startTileX); wx < Math.ceil(endTileX); wx++) {
+                    const biome = getBiomeAtWorldCoords(wx, wy, perlin, sliders);
+                    const [r, g, b] = BIOME_COLORS[biome] || [0, 0, 0];
+                    ctx.fillStyle = `rgba(${r},${g},${b},0.35)`;
+                    ctx.fillRect((wx - startTileX) * pixelScale, (wy - startTileY) * pixelScale, pixelScale, pixelScale);
                 }
             }
-            playerDiv.style.left = `${viewportWidth / 2}px`;
-            playerDiv.style.top = `${viewportHeight / 2}px`;
+
+            // ensure chunks exist, then overlay spawn markers
+            const startChunkX = Math.floor(startTileX / CHUNK_SIZE), endChunkX = Math.ceil(endTileX / CHUNK_SIZE);
+            const startChunkY = Math.floor(startTileY / CHUNK_SIZE), endChunkY = Math.ceil(endTileY / CHUNK_SIZE);
+
+            let visibleTrees = 0, visibleFish = 0;
+            const visibleBiomeCounts = {};
+
+            const seed = parseInt(seedInput.value) || 0;
+            const angle = (timeOfDay - 0.25) * 2 * Math.PI;
+            const sunVector = [-Math.cos(angle), -Math.sin(angle)];
+
+            for (let cy = startChunkY; cy < endChunkY; cy++) {
+                for (let cx = startChunkX; cx < endChunkX; cx++) {
+                    const key = `${cx},${cy}`;
+                    if (!chunkCache.has(key)) generateChunkData(cx, cy, sliders, sunVector, seed);
+                    const chunk = chunkCache.get(key);
+                    if (!chunk) continue;
+
+                    for (const obj of chunk.objects) {
+                        const sx = (obj.x - startTileX) * pixelScale + pixelScale / 2;
+                        const sy = (obj.y - startTileY) * pixelScale + pixelScale / 2;
+
+                        if (obj.type === 'tree') {
+                            visibleTrees++;
+                            ctx.strokeStyle = 'rgba(34,197,94,0.9)'; // green
+                            ctx.lineWidth = Math.max(1, pixelScale / 8);
+                            ctx.beginPath();
+                            ctx.arc(sx, sy, Math.max(2, pixelScale * 0.4), 0, Math.PI * 2);
+                            ctx.stroke();
+                            ctx.font = `${pixelScale * 0.9}px sans-serif`;
+                            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                            ctx.fillStyle = 'rgba(34,197,94,0.9)';
+                            ctx.fillText('🌳', sx, sy - pixelScale * 0.1);
+                        } else if (obj.type === 'fish') {
+                            visibleFish++;
+                            ctx.strokeStyle = 'rgba(59,130,246,0.95)'; // blue
+                            ctx.lineWidth = Math.max(1, pixelScale / 8);
+                            ctx.strokeRect(sx - pixelScale * 0.5, sy - pixelScale * 0.5, pixelScale, pixelScale);
+                            ctx.font = `${pixelScale * 0.8}px sans-serif`;
+                            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                            ctx.fillStyle = 'rgba(59,130,246,0.95)';
+                            ctx.fillText('🐟', sx, sy);
+                        }
+                    }
+                }
+            }
+
+            // gather biome counts like the normal view (so legend still makes sense)
+            for (let wy = Math.floor(startTileY); wy < Math.ceil(endTileY); wy++) {
+                for (let wx = Math.floor(startTileX); wx < Math.ceil(endTileX); wx++) {
+                    const biome = getBiomeAtWorldCoords(wx, wy, perlin, sliders);
+                    visibleBiomeCounts[biome] = (visibleBiomeCounts[biome] || 0) + 1;
+                }
+            }
+
+            // small on-canvas label
+            ctx.fillStyle = 'rgba(0,0,0,0.65)';
+            ctx.fillRect(8, 8, 230, 48);
+            ctx.fillStyle = '#fff';
+            ctx.font = '12px sans-serif';
+            ctx.fillText(`DEBUG: spawns  🌳 ${visibleTrees}   🐟 ${visibleFish}`, 18, 26);
+            ctx.fillText(`Press P to return`, 18, 44);
+
+            // keep player centered
+            playerDiv.style.left = `${vw / 2}px`;
+            playerDiv.style.top = `${vh / 2}px`;
+
+            return { visibleTrees, visibleFish, visibleBiomeCounts };
         }
+
 
         function drawMinimap() {
             const roundedPlayerX = Math.round(player.x), roundedPlayerY = Math.round(player.y);
@@ -1413,7 +1613,7 @@
             if (moveX > 0) playerEmojiSpan.style.transform = 'scaleX(-1)';
             else if (moveX < 0) playerEmojiSpan.style.transform = 'scaleX(1)';
 
-            const { visibleTrees, visibleFish, visibleBiomeCounts } = drawWorld();
+            const { visibleTrees, visibleFish, visibleBiomeCounts } = drawWorld(deltaTime);
             drawMinimap();
             updateHUD(currentBiome, visibleTrees, visibleFish, visibleBiomeCounts || {});
         }
@@ -1639,13 +1839,24 @@
             document.addEventListener('keydown', (e) => {
                 if (e.target.tagName === 'INPUT') return;
                 const key = e.key.toLowerCase();
+
                 if (key === 'p') {
-                    isDebugViewActive = !isDebugViewActive; chunkCache.clear();
+                    if (e.shiftKey) {
+                        // Shift+P = river-noise heatmap (your current debug)
+                        isDebugViewActive = !isDebugViewActive;
+                        chunkCache.clear();
+                    } else {
+                        // P = show actual spawn positions overlay
+                        showSpawnOverlay = !showSpawnOverlay;
+                    }
                 } else if (key === 'h') {
                     isContourOverlayActive = !isContourOverlayActive;
                 }
+
                 keys[e.key.toLowerCase()] = true;
             });
+
+
             document.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
             canvas.addEventListener('click', (e) => {
                 const pixelScale = parseInt(sliders.pixelScale.slider.value);
@@ -1666,4 +1877,5 @@
         };
     </script>
 </body>
+
 </html>
