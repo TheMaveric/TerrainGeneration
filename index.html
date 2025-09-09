@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
@@ -30,7 +31,7 @@
             width: 100%;
             height: 100%;
         }
-        
+
         #player {
             position: absolute;
             width: 8px;
@@ -56,33 +57,54 @@
         }
 
         @keyframes bubble {
-            0% { transform: scale(1); opacity: 1; }
-            50% { transform: scale(1.2); opacity: 0.8; }
-            100% { transform: scale(1); opacity: 1; }
+            0% {
+                transform: scale(1);
+                opacity: 1;
+            }
+
+            50% {
+                transform: scale(1.2);
+                opacity: 0.8;
+            }
+
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
         }
-        
+
         #mobileControls {
-            pointer-events: none; /* Let clicks pass through the container */
+            pointer-events: none;
+            /* Let clicks pass through the container */
         }
+
         #joystick {
-            pointer-events: auto; /* But not the controls themselves */
+            pointer-events: auto;
+            /* But not the controls themselves */
         }
-        
+
         #timeSliderContainer {
             cursor: pointer;
         }
+
         #timeSliderContainer svg * {
-            pointer-events: none; /* Allow events to be captured by the container */
+            pointer-events: none;
+            /* Allow events to be captured by the container */
         }
+
         /* For Webkit-based browsers (Chrome, Safari) */
         .controls::-webkit-scrollbar {
             width: 8px;
         }
+
         .controls::-webkit-scrollbar-track {
-            background: #2d3748; /* bg-gray-700 */
+            background: #2d3748;
+            /* bg-gray-700 */
         }
+
         .controls::-webkit-scrollbar-thumb {
-            background: #4a5568; /* bg-gray-600 */
+            background: #4a5568;
+            /* bg-gray-600 */
             border-radius: 4px;
         }
 
@@ -92,15 +114,19 @@
             padding-top: 1rem;
             padding-bottom: 1rem;
         }
-        .collapsible-hud.collapsed .controls, .collapsible-hud.collapsed .controls-footer {
+
+        .collapsible-hud.collapsed .controls,
+        .collapsible-hud.collapsed .controls-footer {
             display: none;
         }
+
         .collapsible-hud.collapsed .title-bar {
             flex-direction: column-reverse;
             align-items: center;
             gap: 0.5rem;
             margin-bottom: 0;
         }
+
         .collapsible-hud.collapsed h3 {
             writing-mode: vertical-rl;
             transform: rotate(180deg);
@@ -108,22 +134,28 @@
             padding: 0;
             line-height: 1;
         }
+
         .collapsible-hud.collapsed .toggle-icon {
             transform: rotate(180deg);
         }
     </style>
 </head>
+
 <body class="bg-gray-900 text-gray-200">
-    
+
     <div id="viewport">
         <canvas id="canvas" class="pixelated"></canvas>
         <div id="player">
             <span id="player-emoji" class="text-lg">🚶</span>
         </div>
-        <div id="loading" class="absolute inset-0 flex items-center justify-center bg-gray-800 bg-opacity-75 z-50 transition-opacity duration-300 hidden">
-            <svg class="animate-spin h-8 w-8 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <div id="loading"
+            class="absolute inset-0 flex items-center justify-center bg-gray-800 bg-opacity-75 z-50 transition-opacity duration-300 hidden">
+            <svg class="animate-spin h-8 w-8 text-white" xmlns="http://www.w3.org/2000/svg" fill="none"
+                viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                <path class="opacity-75" fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                </path>
             </svg>
         </div>
         <div class="absolute top-4 left-4 p-3 bg-gray-800 bg-opacity-75 rounded-lg shadow-md z-20 max-w-xs">
@@ -141,11 +173,12 @@
                         <span>🌲 Biome:</span>
                         <span id="biomeText">...</span>
                     </div>
-                     <div class="flex justify-between items-center mt-1">
+                    <div class="flex justify-between items-center mt-1">
                         <span>☀️ Time:</span>
                         <span id="timeText">...</span>
                     </div>
-                    <div class="flex justify-between items-center text-xs text-gray-400 pt-1 border-t border-gray-700 mt-1">
+                    <div
+                        class="flex justify-between items-center text-xs text-gray-400 pt-1 border-t border-gray-700 mt-1">
                         <span>Visible Trees:</span>
                         <span id="treeCountText">0</span>
                     </div>
@@ -157,106 +190,150 @@
                         <span>⌨️ Keys:</span>
                         <span id="keysText">...</span>
                     </div>
-                    <div class="flex justify-between items-center text-xs text-gray-400 pt-1 border-t border-gray-700 mt-1">
+                    <div
+                        class="flex justify-between items-center text-xs text-gray-400 pt-1 border-t border-gray-700 mt-1">
                         <span>FPS:</span>
                         <span id="currentFps" class="font-mono">--</span>
                     </div>
                     <div class="flex justify-between items-center text-xs text-gray-400">
-                         <span>Min/Max:</span>
-                         <span class="font-mono"><span id="minFps">--</span>/<span id="maxFps">--</span></span>
+                        <span>Min/Max:</span>
+                        <span class="font-mono"><span id="minFps">--</span>/<span id="maxFps">--</span></span>
                     </div>
-                    <div class="flex justify-between items-center text-xs text-gray-400 pt-1 border-t border-gray-700 mt-1">
+                    <div
+                        class="flex justify-between items-center text-xs text-gray-400 pt-1 border-t border-gray-700 mt-1">
                         <span>'H' - Contours:</span>
                         <span id="contourStatus" class="font-semibold text-red-400">Off</span>
-                   </div>
+                    </div>
                 </div>
             </div>
         </div>
         <div class="absolute top-4 right-4 p-3 bg-gray-800 bg-opacity-75 rounded-lg shadow-md z-20 max-w-xs">
-             <h3 class="text-lg font-bold text-center mb-2 text-white">Fish Log</h3>
+            <h3 class="text-lg font-bold text-center mb-2 text-white">Fish
+                Log</h3>
             <div id="fishLog" class="flex flex-col gap-1 mt-2 border-t border-gray-700 pt-2">
             </div>
         </div>
         <div id="messageBox" class="absolute top-24 right-4 flex justify-center z-40">
-            <div id="messageText" class="p-3 bg-gray-700 text-white rounded-lg shadow-md hidden text-center w-auto"></div>
+            <div id="messageText" class="p-3 bg-gray-700 text-white rounded-lg shadow-md hidden text-center w-auto">
+            </div>
         </div>
-        
+
         <div class="absolute bottom-4 left-4 z-40">
             <div class="w-48 h-48 bg-gray-800 border-2 border-gray-600 rounded-lg overflow-hidden relative">
                 <canvas id="minimapCanvas" class="w-full h-full pixelated"></canvas>
-                <div id="minimapPlayer" class="absolute w-2 h-2 bg-red-500 rounded-full" style="left: 50%; top: 50%; transform: translate(-50%, -50%);"></div>
+                <div id="minimapPlayer" class="absolute w-2 h-2 bg-red-500 rounded-full"
+                    style="left: 50%; top: 50%; transform: translate(-50%, -50%);"></div>
             </div>
         </div>
 
         <div id="timeSliderContainer" class="absolute bottom-4 right-4 z-40 w-32 h-32">
             <svg viewBox="0 0 100 100">
-                <circle cx="50" cy="50" r="40" class="stroke-gray-700" stroke-width="8" fill="rgba(31, 41, 55, 0.7)"></circle>
-                <path id="timeSliderProgress" class="stroke-yellow-400" stroke-width="8" fill="none" stroke-linecap="round"></path>
-                <text x="50" y="15" text-anchor="middle" font-size="14">🕛</text> <text x="88" y="55" text-anchor="middle" font-size="14">☀️</text> <text x="50" y="95" text-anchor="middle" font-size="14">🕕</text> <text x="12" y="55" text-anchor="middle" font-size="14">🌙</text> <circle id="timeSliderHandle" cx="50" cy="10" r="6" class="fill-white"></circle>
+                <circle cx="50" cy="50" r="40" class="stroke-gray-700" stroke-width="8" fill="rgba(31, 41, 55, 0.7)">
+                </circle>
+                <path id="timeSliderProgress" class="stroke-yellow-400" stroke-width="8" fill="none"
+                    stroke-linecap="round"></path>
+                <text x="50" y="15" text-anchor="middle" font-size="14">🕛</text> <text x="88" y="55"
+                    text-anchor="middle" font-size="14">☀️</text> <text x="50" y="95" text-anchor="middle"
+                    font-size="14">🕕</text> <text x="12" y="55" text-anchor="middle" font-size="14">🌙</text>
+                <circle id="timeSliderHandle" cx="50" cy="10" r="6" class="fill-white"></circle>
             </svg>
         </div>
 
-        <div id="settingsHud" class="absolute top-1/2 right-4 -translate-y-1/2 bg-gray-800 bg-opacity-90 p-4 rounded-lg shadow-lg z-40 w-64 max-h-[80vh] overflow-y-auto transition-all duration-300 collapsed collapsible-hud">
+        <div id="settingsHud"
+            class="absolute top-1/2 right-4 -translate-y-1/2 bg-gray-800 bg-opacity-90 p-4 rounded-lg shadow-lg z-40 w-64 max-h-[80vh] overflow-y-auto transition-all duration-300 collapsed collapsible-hud">
             <div class="flex justify-between items-center mb-4 title-bar">
-                <h3 class="text-lg font-bold text-white transition-all duration-300">World Settings</h3>
+                <h3 class="text-lg font-bold text-white transition-all duration-300">World
+                    Settings</h3>
                 <button id="toggleSettings" class="text-white p-1 rounded-full hover:bg-gray-700">
-                    <svg class="w-6 h-6 transition-transform duration-300 toggle-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                    <svg class="w-6 h-6 transition-transform duration-300 toggle-icon" fill="none" stroke="currentColor"
+                        viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7">
+                        </path>
+                    </svg>
                 </button>
             </div>
             <div class="controls w-full grid grid-cols-1 gap-4 pr-2">
                 <div class="flex flex-col items-center">
                     <label for="seedInput" class="text-sm font-semibold mb-2 text-gray-300">Seed</label>
-                    <input type="text" id="seedInput" placeholder="Enter a number" class="w-full text-center bg-gray-700 rounded-lg py-2 px-3 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 text-white">
+                    <input type="text" id="seedInput" placeholder="Enter a number"
+                        class="w-full text-center bg-gray-700 rounded-lg py-2 px-3 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 text-white">
                 </div>
                 <div class="flex flex-col items-center">
-                    <label for="heightScaleSlider" class="text-sm font-semibold mb-2 text-gray-300">Height Scale: <span id="heightScaleValue">50</span></label>
-                    <input type="range" id="heightScaleSlider" min="20" max="150" value="50" class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600">
+                    <label for="heightScaleSlider" class="text-sm font-semibold mb-2 text-gray-300">Height
+                        Scale: <span id="heightScaleValue">50</span></label>
+                    <input type="range" id="heightScaleSlider" min="20" max="150" value="50"
+                        class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600">
                 </div>
                 <div class="flex flex-col items-center">
-                    <label for="moistureScaleSlider" class="text-sm font-semibold mb-2 text-gray-300">Moisture Scale: <span id="moistureScaleValue">80</span></label>
-                    <input type="range" id="moistureScaleSlider" min="20" max="150" value="80" class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600">
+                    <label for="moistureScaleSlider" class="text-sm font-semibold mb-2 text-gray-300">Moisture
+                        Scale: <span id="moistureScaleValue">80</span></label>
+                    <input type="range" id="moistureScaleSlider" min="20" max="150" value="80"
+                        class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600">
                 </div>
                 <div class="flex flex-col items-center">
-                    <label for="climateContrastSlider" class="text-sm font-semibold mb-2 text-gray-300">Climate Contrast: <span id="climateContrastValue">1.5</span></label>
-                    <input type="range" id="climateContrastSlider" min="1.0" max="3.0" step="0.1" value="1.5" class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600">
+                    <label for="climateContrastSlider" class="text-sm font-semibold mb-2 text-gray-300">Climate
+                        Contrast: <span id="climateContrastValue">1.5</span></label>
+                    <input type="range" id="climateContrastSlider" min="1.0" max="3.0" step="0.1" value="1.5"
+                        class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600">
                 </div>
                 <div class="flex flex-col items-center">
-                    <label for="pixelScaleSlider" class="text-sm font-semibold mb-2 text-gray-300">Pixel Scale: <span id="pixelScaleValue">12</span></label>
-                    <input type="range" id="pixelScaleSlider" min="1" max="24" value="12" class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600">
+                    <label for="pixelScaleSlider" class="text-sm font-semibold mb-2 text-gray-300">Pixel
+                        Scale: <span id="pixelScaleValue">12</span></label>
+                    <input type="range" id="pixelScaleSlider" min="1" max="24" value="12"
+                        class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600">
                 </div>
                 <div class="flex flex-col items-center">
-                    <label for="persistenceSlider" class="text-sm font-semibold mb-2 text-gray-300">Persistence: <span id="persistenceValue">0.5</span></label>
-                    <input type="range" id="persistenceSlider" min="0.1" max="1" step="0.05" value="0.5" class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600">
+                    <label for="persistenceSlider" class="text-sm font-semibold mb-2 text-gray-300">Persistence:
+                        <span id="persistenceValue">0.5</span></label>
+                    <input type="range" id="persistenceSlider" min="0.1" max="1" step="0.05" value="0.5"
+                        class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600">
                 </div>
                 <div class="flex flex-col items-center">
-                    <label for="playerSpeedSlider" class="text-sm font-semibold mb-2 text-gray-300">Player Speed: <span id="playerSpeedValue">2</span></label>
-                    <input type="range" id="playerSpeedSlider" min="0.5" max="5" step="0.5" value="2" class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600">
+                    <label for="playerSpeedSlider" class="text-sm font-semibold mb-2 text-gray-300">Player
+                        Speed: <span id="playerSpeedValue">2</span></label>
+                    <input type="range" id="playerSpeedSlider" min="0.5" max="5" step="0.5" value="2"
+                        class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600">
                 </div>
                 <div class="flex flex-col items-center">
-                    <label for="waterLevelSlider" class="text-sm font-semibold mb-2 text-gray-300">Water Level: <span id="waterLevelValue">0.45</span></label>
-                    <input type="range" id="waterLevelSlider" min="0.0" max="1.0" step="0.05" value="0.45" class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600">
+                    <label for="waterLevelSlider" class="text-sm font-semibold mb-2 text-gray-300">Water
+                        Level: <span id="waterLevelValue">0.45</span></label>
+                    <input type="range" id="waterLevelSlider" min="0.0" max="1.0" step="0.05" value="0.45"
+                        class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600">
                 </div>
                 <div class="flex flex-col items-center">
-                    <label for="treeDensitySlider" class="text-sm font-semibold mb-2 text-gray-300">Tree Density: <span id="treeDensityValue">1.0</span>x</label>
-                    <input type="range" id="treeDensitySlider" min="0.2" max="2.0" step="0.1" value="1.0" class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600">
+                    <label for="treeDensitySlider" class="text-sm font-semibold mb-2 text-gray-300">Tree
+                        Density: <span id="treeDensityValue">1.0</span>x</label>
+                    <input type="range" id="treeDensitySlider" min="0.2" max="2.0" step="0.1" value="1.0"
+                        class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600">
                 </div>
                 <div class="flex flex-col items-center">
-                    <label for="fishDensitySlider" class="text-sm font-semibold mb-2 text-gray-300">Fish Density: <span id="fishDensityValue">1.0</span>x</label>
-                    <input type="range" id="fishDensitySlider" min="0.0" max="3.0" step="0.1" value="1.0" class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600">
+                    <label for="fishDensitySlider" class="text-sm font-semibold mb-2 text-gray-300">Fish
+                        Density: <span id="fishDensityValue">1.0</span>x</label>
+                    <input type="range" id="fishDensitySlider" min="0.0" max="3.0" step="0.1" value="1.0"
+                        class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600">
                 </div>
                 <div class="flex flex-col items-center">
-                    <label for="mapScaleSlider" class="text-sm font-semibold mb-2 text-gray-300">Map Scale: <span id="mapScaleValue">0.10</span></label>
-                    <input type="range" id="mapScaleSlider" min="0.1" max="2.0" step="0.05" value="0.1" class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600">
+                    <label for="mapScaleSlider" class="text-sm font-semibold mb-2 text-gray-300">Map
+                        Scale: <span id="mapScaleValue">0.10</span></label>
+                    <input type="range" id="mapScaleSlider" min="0.1" max="2.0" step="0.05" value="0.1"
+                        class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600">
                 </div>
             </div>
-            <p class="text-xs text-center text-gray-400 mt-4 controls-footer">Changes are applied live.</p>
+            <p class="text-xs text-center text-gray-400 mt-4 controls-footer">Changes
+                are applied live.</p>
         </div>
 
-        <div id="legendHud" class="absolute bottom-56 left-4 bg-gray-800 bg-opacity-90 p-4 rounded-lg shadow-lg z-30 w-64 max-h-[40vh] overflow-y-auto transition-all duration-300 collapsed collapsible-hud">
+        <div id="legendHud"
+            class="absolute bottom-56 left-4 bg-gray-800 bg-opacity-90 p-4 rounded-lg shadow-lg z-30 w-64 max-h-[40vh] overflow-y-auto transition-all duration-300 collapsed collapsible-hud">
             <div class="flex justify-between items-center mb-4 title-bar">
-                <h3 class="text-lg font-bold text-white transition-all duration-300">Biome Legend</h3>
+                <h3 class="text-lg font-bold text-white transition-all duration-300">Biome
+                    Legend</h3>
                 <button id="toggleLegend" class="text-white p-1 rounded-full hover:bg-gray-700">
-                    <svg class="w-6 h-6 transition-transform duration-300 toggle-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                    <svg class="w-6 h-6 transition-transform duration-300 toggle-icon" fill="none" stroke="currentColor"
+                        viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7">
+                        </path>
+                    </svg>
                 </button>
             </div>
             <div id="legendEntries" class="controls w-full flex flex-col gap-2 pr-2 text-sm">
@@ -266,11 +343,13 @@
 
         <div id="mobileControls" class="fixed bottom-0 left-0 right-0 p-8 flex justify-between items-end z-40 hidden">
             <div id="joystick" class="w-32 h-32 bg-gray-500 bg-opacity-30 rounded-full relative">
-                <div id="joystickHandle" class="w-16 h-16 bg-gray-400 bg-opacity-50 rounded-full absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"></div>
+                <div id="joystickHandle"
+                    class="w-16 h-16 bg-gray-400 bg-opacity-50 rounded-full absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
+                </div>
             </div>
         </div>
     </div>
-    
+
     <script>
         // =================================================================================
         // CORE NOISE AND MATH FUNCTIONS
@@ -286,19 +365,19 @@
         const FISH_TYPES = {
             // Common
             'cod': { emoji: '🐟', biomes: ['deepWater', 'shallowWater'], rarity: 0.5 },
-            'salmon':     { emoji: '🐠', biomes: ['river','lowlandRiver','mountainRiver','deltaRiver','shallowWater'], rarity: 0.4 },
-             // Temperate
-            'trout':      { emoji: '🐟', biomes: ['river','mountainRiver'], rarity: 0.3 },
+            'salmon': { emoji: '🐠', biomes: ['river', 'lowlandRiver', 'mountainRiver', 'deltaRiver', 'shallowWater'], rarity: 0.4 },
+            // Temperate
+            'trout': { emoji: '🐟', biomes: ['river', 'mountainRiver'], rarity: 0.3 },
             'mackerel': { emoji: '🎣', biomes: ['shallowWater'], rarity: 0.2 },
             // Tropical
             'clownfish': { emoji: '🐠', biomes: ['shallowWater', 'jungle'], rarity: 0.2 },
             'pufferfish': { emoji: '🐡', biomes: ['jungle', 'swamp', 'shallowWater'], rarity: 0.15 },
-            'piranha':    { emoji: '🐟', biomes: ['river','marshRiver','swamp'], rarity: 0.1 },
+            'piranha': { emoji: '🐟', biomes: ['river', 'marshRiver', 'swamp'], rarity: 0.1 },
             // Cold
-            'arctic char':{ emoji: '🐟', biomes: ['frozenDeepWater','frozenShallowWater','frozenRiver'], rarity: 0.4 },
-            'icefish':    { emoji: '🧊', biomes: ['frozenDeepWater','frozenRiver'], rarity: 0.2 },
+            'arctic char': { emoji: '🐟', biomes: ['frozenDeepWater', 'frozenShallowWater', 'frozenRiver'], rarity: 0.4 },
+            'icefish': { emoji: '🧊', biomes: ['frozenDeepWater', 'frozenRiver'], rarity: 0.2 },
             // Swamp/Murky
-            'catfish':    { emoji: '🎣', biomes: ['swamp','river','marshRiver','lowlandRiver','deltaRiver'], rarity: 0.3 },
+            'catfish': { emoji: '🎣', biomes: ['swamp', 'river', 'marshRiver', 'lowlandRiver', 'deltaRiver'], rarity: 0.3 },
             // Deep Ocean
             'tuna': { emoji: '🐟', biomes: ['deepWater'], rarity: 0.2 },
             'swordfish': { emoji: '🗡️', biomes: ['deepWater'], rarity: 0.1 },
@@ -307,7 +386,7 @@
 
         function seededRandom(seed) {
             let state = Math.sin(seed) * 10000;
-            return function() {
+            return function () {
                 state = (state * 9301 + 49297) % 233280;
                 return state / 233280;
             };
@@ -332,7 +411,7 @@
                 const A = this.p[X] + Y, AA = this.p[A], AB = this.p[A + 1];
                 const B = this.p[X + 1] + Y, BA = this.p[B], BB = this.p[B + 1];
                 const res = this.lerp(v, this.lerp(u, this.grad(this.p[AA], x, y), this.grad(this.p[BA], x - 1, y)),
-                                      this.lerp(u, this.grad(this.p[AB], x, y - 1), this.grad(this.p[BB], x - 1, y - 1)));
+                    this.lerp(u, this.grad(this.p[AB], x, y - 1), this.grad(this.p[BB], x - 1, y - 1)));
                 return (res + 1.0) / 2.0;
             }
             fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
@@ -343,7 +422,7 @@
                 return ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v);
             }
         }
-        
+
         // =================================================================================
         // POISSON DISK SAMPLING FOR OBJECT PLACEMENT
         // =================================================================================
@@ -378,7 +457,7 @@
                 for (let cy = startCellY; cy < endCellY; cy++) {
                     for (let cx = startCellX; cx < endCellX; cx++) {
                         const candidate = getCandidate(cx, cy, perlin, sliders, seed, getRadiusFn);
-                        
+
                         if (candidate.r === 0 || !isValidBiomeFn(candidate.biome) || candidate.x < startX || candidate.x >= endX || candidate.y < startY || candidate.y >= endY) continue;
 
                         let isValid = true;
@@ -407,7 +486,7 @@
                 }
                 return points;
             }
-            
+
             function clearCache() { candidateCache.clear(); }
 
             return { generatePointsForChunk, clearCache };
@@ -433,7 +512,7 @@
             'lowlandRiver': [37, 174, 255],    // keep bright
             'deltaRiver': [60, 170, 200],      // murky blue
         };
-        
+
         function remapNoise(value, exponent) {
             return Math.pow(value, exponent);
         }
@@ -452,29 +531,29 @@
         function getHeightValueAtWorldCoords(worldX, worldY, perlinHeight, heightScale, persistence, mapScale) {
             return getOctaveNoise(worldX, worldY, perlinHeight, heightScale, persistence, 10, mapScale);
         }
-        
-        function getBiomeFromValues(heightValue, moistureValue, temperatureValue, riverValue, sliders){
+
+        function getBiomeFromValues(heightValue, moistureValue, temperatureValue, riverValue, sliders) {
             const { waterLevel } = sliders;
             const landHeight = (heightValue - waterLevel) / (1 - waterLevel);
             const h = heightValue < waterLevel ? (1 - (waterLevel - heightValue) / waterLevel) * 128 : 128 + landHeight * 127;
             const m = moistureValue * 255, t = temperatureValue * 255;
-            
+
             // REPLACE your current river check with this block:
             if (h >= 132) {
                 // dynamic river threshold
                 let riverThreshold = 0.97;
                 const nearSea = h < 140;                  // just inland of beaches
                 const isMarshy = (m > 75 && t > 50);      // warm & wet
-                const isArid  = (t > 66 && m <= 25) || (t > 25 && t <= 66 && m <= 25);
-                        if (nearSea) riverThreshold -= 0.015;     // widen at mouths → deltas
+                const isArid = (t > 66 && m <= 25) || (t > 25 && t <= 66 && m <= 25);
+                if (nearSea) riverThreshold -= 0.015;     // widen at mouths → deltas
                 if (isMarshy) riverThreshold -= 0.005;    // a bit more frequent in swamps/jungle
-                if (isArid)  riverThreshold += 0.015;     // harder in deserts/badlands
-                        if (riverValue > riverThreshold) {
+                if (isArid) riverThreshold += 0.015;     // harder in deserts/badlands
+                if (riverValue > riverThreshold) {
                     if (t <= 25) return 'frozenRiver';    // cold beats other subtypes first
                     if (nearSea) return 'deltaRiver';
                     if (isMarshy) return 'marshRiver';
-                    if (h > 200)  return 'mountainRiver';
-                    if (h < 150)  return 'lowlandRiver';
+                    if (h > 200) return 'mountainRiver';
+                    if (h < 150) return 'lowlandRiver';
                     return 'river';
                 }
             }
@@ -486,22 +565,22 @@
             if (t <= 25 && m <= 50) return 'snowyTundra';
             if ((t > 25 && t <= 50 && m > 25 && m <= 75) || (t <= 25 && m > 50 && m <= 75)) {
                 if (t < 25) {
-                     if (h > 200) return 'snowyTaigaMountains';
-                     if (h > 180) return 'snowyTaigaHills';
-                     return 'snowyTaiga';
+                    if (h > 200) return 'snowyTaigaMountains';
+                    if (h > 180) return 'snowyTaigaHills';
+                    return 'snowyTaiga';
                 } else {
-                     if (h > 200) return 'taigaMountains';
-                     if (h > 180) return 'taigaHills';
-                     return 'taiga';
+                    if (h > 200) return 'taigaMountains';
+                    if (h > 180) return 'taigaHills';
+                    return 'taiga';
                 }
             }
             if (t > 66 && m <= 25) return h > 180 ? 'desertHills' : 'desert';
             if (t > 25 && t <= 66 && m <= 25) return h > 180 ? 'badlandsHills' : 'badlands';
             if ((t > 66 && m > 75) || (m > 50 && t > 50 && t <= 66)) return h > 180 ? 'jungleHills' : 'jungle';
             if (t > 66 && m <= 75 && m > 50) {
-                 if (h > 220) return 'forestMountains';
-                 if (h > 180) return 'forestHills';
-                 return 'forest';
+                if (h > 220) return 'forestMountains';
+                if (h > 180) return 'forestHills';
+                return 'forest';
             }
             if (t > 75 && m <= 50 && m > 25) return h > 180 ? 'savannaPlateau' : 'savanna';
             if (t > 50 && t <= 75 && m > 25 && m <= 50) return h > 200 ? 'mountain' : 'plain';
@@ -512,7 +591,7 @@
             const heightValue = getHeightValueAtWorldCoords(worldX, worldY, perlin.height, sliders.heightScale, sliders.persistence, sliders.mapScale);
             let moistureValue = getOctaveNoise(worldX, worldY, perlin.moisture, sliders.moistureScale, sliders.persistence, 10, sliders.mapScale);
             let temperatureValue = getOctaveNoise(worldX, worldY, perlin.temperature, 150, sliders.persistence, 10, sliders.mapScale);
-            
+
             moistureValue = remapNoise(moistureValue, sliders.climateContrast);
             temperatureValue = remapNoise(temperatureValue, sliders.climateContrast);
 
@@ -529,17 +608,18 @@
             const heightValue = getHeightValueAtWorldCoords(worldX, worldY, perlin.height, sliders.heightScale, sliders.persistence, sliders.mapScale);
             const landHeight = (heightValue - waterLevel) / (1 - waterLevel);
             const h = heightValue < waterLevel ? (1 - (waterLevel - heightValue) / waterLevel) * 128 : 128 + landHeight * 127;
-            
-            if(cache) cache.set(key, h);
+
+            if (cache) cache.set(key, h);
             return h;
         }
 
         function getMovementSpeedModifier(biome) {
             switch (biome) {
-                case 'deepWater': case 'frozenDeepWater': case 'river': return 0.4;
+                case 'deepWater': case 'frozenDeepWater': return 0.4;
                 case 'shallowWater': case 'frozenShallowWater': return 0.6;
                 case 'jungle': case 'jungleHills': case 'swamp': case 'swampHills': return 0.7;
                 case 'snowyMountains': case 'taigaMountains': case 'snowyTaigaMountains': case 'mountain': case 'forestMountains': return 0.5;
+                // rivers now set per-pixel in draw using a dynamic override; keep a safe default:
                 case 'frozenRiver': return 0.3;
                 case 'marshRiver': return 0.35;
                 case 'mountainRiver': return 0.45;
@@ -548,7 +628,8 @@
                 default: return 1.0;
             }
         }
-        
+
+
         function getPixelLightness(x, y, heightValue, perlinHeight, sliders, sunVector) {
             const { heightScale, persistence, mapScale } = sliders;
             const h_x1 = getHeightValueAtWorldCoords(x + 1, y, perlinHeight, heightScale, persistence, mapScale);
@@ -561,24 +642,26 @@
         }
 
         function getTreePlacementRadius(biome, sliders) {
-             const multiplier = sliders.treeDensityMultiplier || 1;
-             let baseRadius = 0;
-             switch (biome) {
+            const multiplier = sliders.treeDensityMultiplier || 1;
+            let baseRadius = 0;
+            switch (biome) {
                 case 'forest': case 'jungle': case 'taiga': baseRadius = 4; break;
                 case 'forestHills': case 'jungleHills': case 'taigaHills': baseRadius = 5; break;
                 case 'swamp': baseRadius = 7; break;
                 case 'plain': baseRadius = 9; break;
                 case 'savanna': baseRadius = 12; break;
                 default: return 0; // No trees in other biomes
-             }
-             return Math.max(1, baseRadius / multiplier);
+            }
+            return Math.max(1, baseRadius / multiplier);
         }
-        
+
         function getFishPlacementRadius(biome, sliders) {
             const multiplier = sliders.fishDensityMultiplier || 1;
             if (multiplier === 0) return 0;
             if (biome.includes('Water') || /river/i.test(biome)) {
-                return Math.max(2, 10 / multiplier);
+                let base = Math.max(2, 10 / multiplier);
+                if (/deltaRiver|marshRiver/i.test(biome)) base = Math.max(2, 8 / multiplier); // a bit denser
+                return base;
             }
             return 0;
         }
@@ -608,7 +691,7 @@
         let keys = {}, timeOfDay = 0.25, lastFrameTime = 0, lastFpsUpdateTime = 0;
         const fpsHistory = [], messages = [], particles = [];
         let minFps = Infinity, maxFps = 0;
-        
+
         let player = {
             x: 0, y: 0,
             fishLog: {}
@@ -660,8 +743,80 @@
             };
         }
 
+        // --- Helpers for biome-aware rivers ----------------------------------------
+        function rgbMix([r1, g1, b1], [r2, g2, b2], a) {
+            return [Math.round(r1 * (1 - a) + r2 * a), Math.round(g1 * (1 - a) + g2 * a), Math.round(b1 * (1 - a) + b2 * a)];
+        }
+
+        // Sample 8-neighborhood to find dominant *land* biome around (local grid coords)
+        function getDominantNeighborLandBiome(biomeGrid, x, y) {
+            const w = CHUNK_SIZE, h = CHUNK_SIZE;
+            const counts = {};
+            const isLand = b => b && !(b.includes('Water') || /river/i.test(b)) && b !== 'beach' && b !== 'snowyBeach';
+            for (let j = -1; j <= 1; j++) {
+                for (let i = -1; i <= 1; i++) {
+                    if (i === 0 && j === 0) continue;
+                    const xx = x + i, yy = y + j;
+                    if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+                    const b = biomeGrid[yy * w + xx];
+                    if (isLand(b)) counts[b] = (counts[b] || 0) + 1;
+                }
+            }
+            // return most frequent land biome (or null)
+            let best = null, c = -1;
+            for (const k in counts) if (counts[k] > c) { c = counts[k]; best = k; }
+            return best;
+        }
+
+        // Map surrounding land biome -> river style (color tint, extra width, speed tweak)
+        function getRiverStyle(surroundBiome, nearSea) {
+            // default classic blue
+            let tint = [37, 174, 255], // base shallow-water blue
+                extraWidth = 0,      // extra halo pixels
+                alpha = 0.16,        // halo opacity
+                speedMul = 0.4,      // baseline matches your lowlandRiver default
+                fishBoost = 0;       // small density bias
+
+            if (nearSea) { // delta behavior
+                tint = [60, 170, 200];   // murkier
+                extraWidth += 1; alpha = 0.22; fishBoost += 0.2; // denser fish in deltas
+            }
+
+            if (!surroundBiome) return { tint, extraWidth, alpha, speedMul, fishBoost };
+
+            if (/mountain|snowy|ice/i.test(surroundBiome)) {
+                tint = [30, 140, 210];        // cooler / glacial hint
+                speedMul = 0.45;            // slightly faster
+                alpha = Math.max(alpha, 0.18);
+            } else if (/forest|plain|taiga/i.test(surroundBiome)) {
+                tint = [37, 174, 255];        // classic
+                speedMul = 0.4;
+            } else if (/jungle|swamp/i.test(surroundBiome)) {
+                tint = [85, 70, 40];        // tea/blackwater
+                extraWidth += 1;            // marshy fringing
+                alpha = 0.22;
+                speedMul = 0.35;            // slower
+                fishBoost += 0.15;          // catfish/piranha thrive
+            } else if (/desert|badlands/i.test(surroundBiome)) {
+                tint = [185, 150, 70];      // silty/yellow-brown
+                extraWidth += 1; alpha = 0.2;
+                speedMul = 0.4;
+            } else if (/savanna/i.test(surroundBiome)) {
+                tint = rgbMix([37, 174, 255], [185, 150, 70], 0.25); // slightly siltier than forest
+                speedMul = 0.4;
+            }
+            return { tint, extraWidth, alpha, speedMul, fishBoost };
+        }
+
+
         function generateChunkData(chunkX, chunkY, sliders, sunVector, seed) {
             const key = `${chunkX},${chunkY}`;
+            // Store per-pixel biome; used by banks/branches/foam
+            const biomeGrid = new Array(CHUNK_SIZE * CHUNK_SIZE);
+
+            // Fast helpers
+            const isRiverLike = (b) => b && /river/i.test(b);
+            const isWaterLike = (b) => b && (b.includes('Water') || isRiverLike(b) || b === 'beach' || b === 'snowyBeach');
 
             const chunkCanvas = document.createElement('canvas');
             chunkCanvas.width = chunkCanvas.height = CHUNK_SIZE;
@@ -671,21 +826,69 @@
             for (let y = 0; y < CHUNK_SIZE; y++) {
                 for (let x = 0; x < CHUNK_SIZE; x++) {
                     const worldX = chunkX * CHUNK_SIZE + x, worldY = chunkY * CHUNK_SIZE + y;
-                    
+
                     const biome = getBiomeAtWorldCoords(worldX, worldY, perlin, sliders);
+                    biomeGrid[y * CHUNK_SIZE + x] = biome;
                     const heightValue = getHeightValueAtWorldCoords(worldX, worldY, perlin.height, sliders.heightScale, sliders.persistence, sliders.mapScale);
-                    const baseColor = BIOME_COLORS[biome] || [0,0,0];
+                    const baseColor = BIOME_COLORS[biome] || [0, 0, 0];
                     const lightness = getPixelLightness(worldX, worldY, heightValue, perlin.height, sliders, sunVector);
-                    
-                    const [r,g,b] = baseColor.map(c => Math.min(255, Math.max(0, c * lightness)));
+
+                    const [r, g, b] = baseColor.map(c => Math.min(255, Math.max(0, c * lightness)));
                     const idx = (y * CHUNK_SIZE + x) * 4;
                     [data[idx], data[idx + 1], data[idx + 2], data[idx + 3]] = [r, g, b, 255];
                 }
             }
             chunkCtx.putImageData(chunkImageData, 0, 0);
-            
-            const trees = PoissonDisk.generatePointsForChunk(chunkX, chunkY, perlin, sliders, seed, 
-                getTreePlacementRadius, 
+            // --- Biome-aware river rendering & bank effects -----------------------------
+            const riverHints = []; // per-pixel style hints (for speed/fish nudges at runtime)
+
+            const nearSeaH = 148;
+            const heightCacheLocal = new Map();
+
+            function isNearSea(wx, wy) {
+                const h = getAbsoluteHeight(wx, wy, perlin, sliders, heightCacheLocal);
+                return h < 140 && h >= 132; // your near-beach buffer
+            }
+
+            // clear any prior shading and redraw banks/tints
+            const riverOverlay = chunkCtx; // draw directly for speed
+            for (let y = 0; y < CHUNK_SIZE; y++) {
+                for (let x = 0; x < CHUNK_SIZE; x++) {
+                    const i = y * CHUNK_SIZE + x;
+                    const b = biomeGrid[i];
+                    if (!isRiverLike(b)) continue;
+
+                    const worldX = chunkX * CHUNK_SIZE + x;
+                    const worldY = chunkY * CHUNK_SIZE + y;
+
+                    const domLand = getDominantNeighborLandBiome(biomeGrid, x, y);
+                    const style = getRiverStyle(domLand, isNearSea(worldX, worldY));
+
+                    // Tint the river pixel toward style.tint (mix with what’s already drawn)
+                    const img = chunkCtx.getImageData(x, y, 1, 1);
+                    const pr = img.data[0], pg = img.data[1], pb = img.data[2];
+                    const [nr, ng, nb] = rgbMix([pr, pg, pb], style.tint, 0.55); // strong tint
+                    img.data[0] = nr; img.data[1] = ng; img.data[2] = nb; img.data[3] = 255;
+                    chunkCtx.putImageData(img, x, y);
+
+                    // Halo to fake width/braiding (1px ring; wider in deserts/delta/jungle)
+                    if (style.extraWidth > 0) {
+                        riverOverlay.fillStyle = `rgba(${style.tint[0]}, ${style.tint[1]}, ${style.tint[2]}, ${style.alpha})`;
+                        // ring in 4-neighborhood
+                        if (x > 0 && !isRiverLike(biomeGrid[i - 1])) riverOverlay.fillRect(x - 1, y, 1, 1);
+                        if (x < CHUNK_SIZE - 1 && !isRiverLike(biomeGrid[i + 1])) riverOverlay.fillRect(x + 1, y, 1, 1);
+                        if (y > 0 && !isRiverLike(biomeGrid[i - CHUNK_SIZE])) riverOverlay.fillRect(x, y - 1, 1, 1);
+                        if (y < CHUNK_SIZE - 1 && !isRiverLike(biomeGrid[i + CHUNK_SIZE])) riverOverlay.fillRect(x, y + 1, 1, 1);
+                    }
+
+                    riverHints.push({ x, y, speedMul: style.speedMul, fishBoost: style.fishBoost });
+                }
+            }
+
+
+
+            const trees = PoissonDisk.generatePointsForChunk(chunkX, chunkY, perlin, sliders, seed,
+                getTreePlacementRadius,
                 (biome) => getTreePlacementRadius(biome, sliders) > 0,
                 (c) => {
                     const possibleTrees = Object.values(TREE_TYPES).filter(t => t.biomes.includes(c.biome));
@@ -701,14 +904,14 @@
 
                     const offsetXRand = seededRandom(c.x * 987 + c.y * 654 + seed + 2)();
                     const offsetYRand = seededRandom(c.x * 321 + c.y * 123 + seed + 3)();
-                    
+
                     const offsetX = (offsetXRand - 0.5) * 0.8;
                     const offsetY = (offsetYRand - 0.5) * 0.8;
 
-                    return { 
-                        x: Math.round(c.x), 
-                        y: Math.round(c.y), 
-                        type: 'tree', 
+                    return {
+                        x: Math.round(c.x),
+                        y: Math.round(c.y),
+                        type: 'tree',
                         emoji: treeType.emoji,
                         height: height,
                         offsetX,
@@ -736,7 +939,7 @@
             );
 
             objects.push(...trees.filter(t => t !== null), ...fish.filter(f => f !== null));
-            chunkCache.set(key, { canvas: chunkCanvas, objects });
+            chunkCache.set(key, { canvas: chunkCanvas, objects, riverHints }); // instead of earlier set
             manageCache();
         }
 
@@ -747,7 +950,7 @@
             const sliders = getSliderValues();
             const { pixelScale } = sliders;
             const viewportWidth = viewport.clientWidth, viewportHeight = viewport.clientHeight;
-            
+
             canvas.width = viewportWidth; canvas.height = viewportHeight;
             ctx.clearRect(0, 0, viewportWidth, viewportHeight);
             ctx.imageSmoothingEnabled = false;
@@ -757,10 +960,10 @@
             const startTileY = player.y - viewTilesY / 2, endTileY = player.y + viewTilesY / 2;
             const startChunkX = Math.floor(startTileX / CHUNK_SIZE), endChunkX = Math.ceil(endTileX / CHUNK_SIZE);
             const startChunkY = Math.floor(startTileY / CHUNK_SIZE), endChunkY = Math.ceil(endTileY / CHUNK_SIZE);
-            
+
             let visibleTrees = 0, visibleFish = 0;
             const visibleBiomeCounts = {};
-            
+
             const angle = (timeOfDay - 0.25) * 2 * Math.PI;
             const sunVector = [-Math.cos(angle), -Math.sin(angle)];
             const seed = parseInt(seedInput.value) || 0;
@@ -770,37 +973,37 @@
                     const key = `${cx},${cy}`;
                     if (!chunkCache.has(key)) { generateChunkData(cx, cy, sliders, sunVector, seed); }
                     const chunk = chunkCache.get(key);
-                    if(!chunk) continue;
+                    if (!chunk) continue;
 
                     const screenX = Math.round((cx * CHUNK_SIZE - startTileX) * pixelScale);
                     const screenY = Math.round((cy * CHUNK_SIZE - startTileY) * pixelScale);
-                    
+
                     ctx.drawImage(chunk.canvas, screenX, screenY, CHUNK_SIZE * pixelScale, CHUNK_SIZE * pixelScale);
-                    
+
                     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-                    
+
                     for (const obj of chunk.objects) {
-                         const objScreenX = (obj.x - startTileX) * pixelScale, objScreenY = (obj.y - startTileY) * pixelScale;
-                         if (objScreenX >= -pixelScale && objScreenX <= viewportWidth && objScreenY >= -pixelScale && objScreenY <= viewportHeight) {
-                             if (obj.type === 'tree') {
-                                 visibleTrees++;
-                                 const baseSize = pixelScale * 1.2;
-                                 const heightScale = obj.height * 0.5;
-                                 ctx.font = `${baseSize * heightScale}px sans-serif`;
-                                 const renderX = objScreenX + pixelScale / 2 + (obj.offsetX || 0) * pixelScale;
-                                 const renderY = objScreenY + pixelScale / 2 + (obj.offsetY || 0) * pixelScale;
-                                 
-                                 ctx.textBaseline = 'bottom';
-                                 ctx.textAlign = 'center';
-                                 ctx.fillText(obj.emoji, renderX, renderY);
-                             } else if (obj.type === 'fish') {
-                                 visibleFish++;
-                                 ctx.globalAlpha = 0.6 + Math.sin(Date.now() / 200 + obj.x) * 0.3;
-                                 ctx.font = `${pixelScale * 0.8}px sans-serif`;
-                                 ctx.fillText(obj.emoji, objScreenX + pixelScale / 2, objScreenY + pixelScale / 2);
-                                 ctx.globalAlpha = 1.0;
-                             }
-                         }
+                        const objScreenX = (obj.x - startTileX) * pixelScale, objScreenY = (obj.y - startTileY) * pixelScale;
+                        if (objScreenX >= -pixelScale && objScreenX <= viewportWidth && objScreenY >= -pixelScale && objScreenY <= viewportHeight) {
+                            if (obj.type === 'tree') {
+                                visibleTrees++;
+                                const baseSize = pixelScale * 1.2;
+                                const heightScale = obj.height * 0.5;
+                                ctx.font = `${baseSize * heightScale}px sans-serif`;
+                                const renderX = objScreenX + pixelScale / 2 + (obj.offsetX || 0) * pixelScale;
+                                const renderY = objScreenY + pixelScale / 2 + (obj.offsetY || 0) * pixelScale;
+
+                                ctx.textBaseline = 'bottom';
+                                ctx.textAlign = 'center';
+                                ctx.fillText(obj.emoji, renderX, renderY);
+                            } else if (obj.type === 'fish') {
+                                visibleFish++;
+                                ctx.globalAlpha = 0.6 + Math.sin(Date.now() / 200 + obj.x) * 0.3;
+                                ctx.font = `${pixelScale * 0.8}px sans-serif`;
+                                ctx.fillText(obj.emoji, objScreenX + pixelScale / 2, objScreenY + pixelScale / 2);
+                                ctx.globalAlpha = 1.0;
+                            }
+                        }
                     }
                 }
             }
@@ -830,11 +1033,11 @@
                 for (let y = Math.floor(startTileY); y < endTileY; y++) {
                     for (let x = Math.floor(startTileX); x < endTileX; x++) {
                         const h1 = getAbsoluteHeight(x, y, perlin, sliders, heightCache);
-                        
+
                         const h2 = getAbsoluteHeight(x + 1, y, perlin, sliders, heightCache);
                         let minH = Math.min(h1, h2), maxH = Math.max(h1, h2);
                         let contourLevel = Math.ceil(minH / contourInterval) * contourInterval;
-                        
+
                         while (contourLevel < maxH) {
                             const isMajor = contourLevel % majorContourInterval === 0;
                             ctx.strokeStyle = isMajor ? majorContourColor : contourColor;
@@ -847,10 +1050,10 @@
                             ctx.lineTo(screenX, screenY + pixelScale);
                             ctx.stroke();
 
-                            if (y % labelInterval === 0) { 
-                                 ctx.font = `bold ${isMajor ? Math.max(9, pixelScale / 1.4) : Math.max(7, pixelScale / 1.6)}px sans-serif`;
-                                 ctx.fillStyle = labelColor;
-                                 ctx.fillText(contourLevel, screenX + 3, screenY + pixelScale / 2);
+                            if (y % labelInterval === 0) {
+                                ctx.font = `bold ${isMajor ? Math.max(9, pixelScale / 1.4) : Math.max(7, pixelScale / 1.6)}px sans-serif`;
+                                ctx.fillStyle = labelColor;
+                                ctx.fillText(contourLevel, screenX + 3, screenY + pixelScale / 2);
                             }
                             contourLevel += contourInterval;
                         }
@@ -871,7 +1074,7 @@
                             ctx.lineTo(screenX + pixelScale, screenY);
                             ctx.stroke();
 
-                            if (x % labelInterval === 0) { 
+                            if (x % labelInterval === 0) {
                                 ctx.font = `bold ${isMajor ? Math.max(9, pixelScale / 1.4) : Math.max(7, pixelScale / 1.6)}px sans-serif`;
                                 ctx.fillStyle = labelColor;
                                 ctx.fillText(contourLevel, screenX + pixelScale / 2, screenY + 3);
@@ -896,9 +1099,9 @@
             }
 
             const overlayAlpha = (1 - timeInfo.lightLevel) * 0.75, tint = timeInfo.tint;
-            ctx.fillStyle = `rgba(${tint[0]*30}, ${tint[1]*40}, ${tint[2]*80}, ${overlayAlpha})`;
+            ctx.fillStyle = `rgba(${tint[0] * 30}, ${tint[1] * 40}, ${tint[2] * 80}, ${overlayAlpha})`;
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-            
+
             ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
             for (let i = particles.length - 1; i >= 0; i--) {
                 const p = particles[i];
@@ -913,12 +1116,12 @@
 
             return { visibleTrees, visibleFish, visibleBiomeCounts };
         }
-        
+
         function drawDebugNoiseView() {
             const sliders = getSliderValues();
             const { pixelScale } = sliders;
             const viewportWidth = viewport.clientWidth, viewportHeight = viewport.clientHeight;
-            
+
             canvas.width = viewportWidth; canvas.height = viewportHeight;
             ctx.clearRect(0, 0, viewportWidth, viewportHeight);
             ctx.imageSmoothingEnabled = false;
@@ -929,7 +1132,7 @@
 
             for (let y = Math.floor(startTileY); y < Math.ceil(endTileY); y++) {
                 for (let x = Math.floor(startTileX); x < Math.ceil(endTileX); x++) {
-                    const noise = getOctaveNoise(x,y, perlin.river, 40, sliders.persistence, 10, sliders.mapScale);
+                    const noise = getOctaveNoise(x, y, perlin.river, 40, sliders.persistence, 10, sliders.mapScale);
                     const r = noise * 255, b = (1 - noise) * 255;
                     ctx.fillStyle = `rgb(${r}, 0, ${b})`;
                     ctx.fillRect((x - startTileX) * pixelScale, (y - startTileY) * pixelScale, pixelScale, pixelScale);
@@ -958,7 +1161,7 @@
                     const worldX = startX + x * MINIMAP_ZOOM;
                     const worldY = startY + y * MINIMAP_ZOOM;
                     const biome = getBiomeAtWorldCoords(worldX, worldY, perlin, sliders);
-                    const color = BIOME_COLORS[biome] || [0,0,0];
+                    const color = BIOME_COLORS[biome] || [0, 0, 0];
                     minimapCtx.fillStyle = `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
                     minimapCtx.fillRect(x, y, 1, 1);
                 }
@@ -981,7 +1184,7 @@
                     DOMElements.messageText.classList.add('hidden');
                     messages.shift();
                     displayNextMessage();
-                }, 2000); 
+                }, 2000);
             }, 500);
         }
 
@@ -1010,13 +1213,13 @@
             const sortedBiomes = Object.keys(visibleBiomeCounts).sort((a, b) => visibleBiomeCounts[b] - visibleBiomeCounts[a]);
 
             if (sortedBiomes.length === 0) {
-                 legendEntries.innerHTML = `<p class="text-gray-500 text-xs italic">No biomes in view</p>`;
+                legendEntries.innerHTML = `<p class="text-gray-500 text-xs italic">No biomes in view</p>`;
             } else {
                 for (const biomeName of sortedBiomes) {
                     const count = visibleBiomeCounts[biomeName];
                     const color = BIOME_COLORS[biomeName];
                     const colorHex = `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
-                    
+
                     const entryHTML = `
                         <div class="flex justify-between items-center">
                             <div class="flex items-center gap-2">
@@ -1036,7 +1239,7 @@
             DOMElements.contourStatus.classList.toggle('text-green-400', isContourOverlayActive);
             DOMElements.contourStatus.classList.toggle('text-red-400', !isContourOverlayActive);
         }
-        
+
         class Particle {
             constructor(x, y) { this.x = x; this.y = y; this.life = 1; this.size = Math.random() * 2 + 1; this.vx = (Math.random() - 0.5) * 0.5; this.vy = -Math.random() * 0.5; }
             update() { this.x += this.vx; this.y += this.vy; this.life -= 0.05; }
@@ -1057,18 +1260,37 @@
                 minFps = Math.min(minFps, fps); maxFps = Math.max(maxFps, fps);
                 DOMElements.currentFps.textContent = Math.round(fps); DOMElements.minFps.textContent = Math.round(minFps); DOMElements.maxFps.textContent = Math.round(maxFps);
             }
-            
+
             const sliders = getSliderValues();
             let moveX = 0, moveY = 0;
             if (keys['w'] || keys['arrowup']) moveY -= 1; if (keys['s'] || keys['arrowdown']) moveY += 1;
             if (keys['a'] || keys['arrowleft']) moveX -= 1; if (keys['d'] || keys['arrowright']) moveX += 1;
-            
+
             const mag = Math.hypot(moveX, moveY);
             if (mag > 0) { moveX /= mag; moveY /= mag; }
-            
+
             const currentBiome = getBiomeAtWorldCoords(Math.round(player.x), Math.round(player.y), perlin, sliders);
-            const speedModifier = getMovementSpeedModifier(currentBiome);
-            
+            // after: const currentBiome = getBiomeAtWorldCoords(...);
+            let speedModifier = getMovementSpeedModifier(currentBiome);
+
+            // Dynamic river override: sample the current chunk's hint if on river
+            if (/river/i.test(currentBiome)) {
+                const cx = Math.floor(player.x / CHUNK_SIZE), cy = Math.floor(player.y / CHUNK_SIZE);
+                const chunk = chunkCache.get(`${cx},${cy}`);
+                if (chunk && chunk.riverHints && chunk.riverHints.length) {
+                    const lx = Math.round(player.x - cx * CHUNK_SIZE);
+                    const ly = Math.round(player.y - cy * CHUNK_SIZE);
+                    // find a nearby hint (tiny search)
+                    let best = null, bestD = 2;
+                    for (const h of chunk.riverHints) {
+                        const d = Math.abs(h.x - lx) + Math.abs(h.y - ly);
+                        if (d < bestD) { bestD = d; best = h; if (d === 0) break; }
+                    }
+                    if (best) speedModifier = best.speedMul;
+                }
+            }
+
+
             player.x += moveX * sliders.playerSpeed * deltaTime * 10 * speedModifier;
             player.y += moveY * sliders.playerSpeed * deltaTime * 10 * speedModifier;
 
@@ -1085,25 +1307,25 @@
             drawMinimap();
             updateHUD(currentBiome, visibleTrees, visibleFish, visibleBiomeCounts || {});
         }
-        
+
         function performInteraction(worldX, worldY) {
             if (isGenerating || isGamePaused || !perlin) return;
             const chunkX = Math.floor(worldX / CHUNK_SIZE), chunkY = Math.floor(worldY / CHUNK_SIZE);
             const chunk = chunkCache.get(`${chunkX},${chunkY}`);
-            
+
             if (chunk) {
                 const objIndex = chunk.objects.findIndex(obj => obj.x === worldX && obj.y === worldY);
                 if (objIndex !== -1) {
                     const object = chunk.objects[objIndex];
                     if (object.type === 'fish') {
                         if (!player.fishLog[object.name]) {
-                             player.fishLog[object.name] = true;
+                            player.fishLog[object.name] = true;
                             showMessage(`Discovered a ${object.name}! ${object.emoji}`);
                         } else {
                             showMessage(`You've already discovered the ${object.name}.`);
                         }
                         chunk.objects.splice(objIndex, 1);
-                        for(let i=0; i<5; i++) particles.push(new Particle(worldX, worldY));
+                        for (let i = 0; i < 5; i++) particles.push(new Particle(worldX, worldY));
                     }
                 }
             }
@@ -1114,25 +1336,25 @@
         // =================================================================================
         function handleGenerate(isSeedChange = false) {
             if (isGenerating) return;
-            DOMElements.loading.classList.remove('hidden'); 
+            DOMElements.loading.classList.remove('hidden');
             isGenerating = true;
-            
+
             lastMinimapPlayerPos = { x: null, y: null }; // Force minimap redraw
-            PoissonDisk.clearCache(); 
+            PoissonDisk.clearCache();
             rawNoiseCache.clear();
             chunkCache.clear();
 
-            if(isSeedChange) {
+            if (isSeedChange) {
                 generatePerlinMaps();
             }
-            
-            drawWorld(); 
+
+            drawWorld();
             drawMinimap();
-            DOMElements.loading.classList.add('hidden'); 
+            DOMElements.loading.classList.add('hidden');
             isGenerating = false;
             minFps = Infinity; maxFps = 0; fpsHistory.length = 0;
         }
-        
+
         function handleLoadAndResize() {
             canvas.width = viewport.clientWidth; canvas.height = viewport.clientHeight;
             if (!isGenerating && perlin) { drawWorld(); drawMinimap(); }
@@ -1142,7 +1364,7 @@
             event.preventDefault();
             const rect = DOMElements.timeSliderContainer.getBoundingClientRect();
             const centerX = rect.left + rect.width / 2, centerY = rect.top + rect.height / 2;
-            
+
             let wasPaused = isGamePaused;
             isGamePaused = true;
 
@@ -1157,7 +1379,7 @@
                 chunkCache.clear();
                 drawWorld();
             }
-            function onEnd() { 
+            function onEnd() {
                 window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onEnd);
                 window.removeEventListener('touchmove', onMove); window.removeEventListener('touchend', onEnd);
                 isGamePaused = wasPaused;
@@ -1198,12 +1420,12 @@
                 }
             }, { passive: true });
             window.addEventListener('touchend', (e) => {
-                 for (let touch of e.changedTouches) {
-                       if (touch.identifier === joystickTouchId) {
-                           joystickTouchId = null; DOMElements.joystickHandle.style.transform = `translate(-50%, -50%)`;
-                           keys['w'] = keys['s'] = keys['a'] = keys['d'] = false; break;
-                       }
-                 }
+                for (let touch of e.changedTouches) {
+                    if (touch.identifier === joystickTouchId) {
+                        joystickTouchId = null; DOMElements.joystickHandle.style.transform = `translate(-50%, -50%)`;
+                        keys['w'] = keys['s'] = keys['a'] = keys['d'] = false; break;
+                    }
+                }
             });
         }
 
@@ -1282,7 +1504,7 @@
             DOMElements.toggleSettings.addEventListener('click', () => {
                 DOMElements.settingsHud.classList.toggle('collapsed');
             });
-             DOMElements.toggleLegend.addEventListener('click', () => {
+            DOMElements.toggleLegend.addEventListener('click', () => {
                 DOMElements.legendHud.classList.toggle('collapsed');
             });
 
@@ -1307,8 +1529,10 @@
             document.addEventListener('keydown', (e) => {
                 if (e.target.tagName === 'INPUT') return;
                 const key = e.key.toLowerCase();
-                if (key === 'p') { isDebugViewActive = !isDebugViewActive; chunkCache.clear(); 
-                } else if (key === 'h') { isContourOverlayActive = !isContourOverlayActive;
+                if (key === 'p') {
+                    isDebugViewActive = !isDebugViewActive; chunkCache.clear();
+                } else if (key === 'h') {
+                    isContourOverlayActive = !isContourOverlayActive;
                 }
                 keys[e.key.toLowerCase()] = true;
             });
@@ -1323,15 +1547,14 @@
 
             DOMElements.timeSliderContainer.addEventListener('mousedown', handleTimeSliderInteraction);
             DOMElements.timeSliderContainer.addEventListener('touchstart', handleTimeSliderInteraction);
-            
+
             generatePerlinMaps();
             handleLoadAndResize();
             setupMobileControls();
             updateCircularSliderUI(timeOfDay);
-            gameLoop(0); 
+            gameLoop(0);
         };
     </script>
 </body>
+
 </html>
-
-
