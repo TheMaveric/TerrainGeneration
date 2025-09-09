@@ -1022,6 +1022,8 @@
             manageCache();
         }
 
+        const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
         function drawWorld(deltaTime = 0) {
             if (isGenerating || !perlin) return { visibleTrees: 0, visibleFish: 0 };
             if (isDebugViewActive) { return drawDebugSpawnsView(); }
@@ -1149,15 +1151,30 @@
                         if (objScreenX >= -pixelScale && objScreenX <= viewportWidth && objScreenY >= -pixelScale && objScreenY <= viewportHeight) {
                             if (obj.type === 'tree') {
                                 visibleTrees++;
-                                const baseSize = pixelScale * 1.2;
-                                const heightScale = obj.height * 0.5;
-                                ctx.font = `${baseSize * heightScale}px sans-serif`;
-                                const renderX = objScreenX + pixelScale / 2 + (obj.offsetX || 0) * pixelScale;
-                                const renderY = objScreenY + pixelScale / 2 + (obj.offsetY || 0) * pixelScale;
 
-                                ctx.textBaseline = 'bottom';
+                                // Cache an integer font size per tree per pixelScale
+                                if (!obj._fontCache || obj._fontCache.scale !== pixelScale) {
+                                    const px = Math.max(8, Math.round(pixelScale * 1.2 * (obj.height * 0.5)));
+                                    obj._fontCache = { scale: pixelScale, px };
+                                }
+
+                                ctx.font = `${obj._fontCache.px}px sans-serif`;
                                 ctx.textAlign = 'center';
-                                ctx.fillText(obj.emoji, renderX, renderY);
+                                ctx.textBaseline = 'bottom';
+
+                                // Keep the base inside this tile; canopy can overflow
+                                const tileLeft = Math.floor(objScreenX);
+                                const tileTop = Math.floor(objScreenY);
+                                const tileBottom = tileTop + pixelScale;
+
+                                const basePad = Math.max(1, Math.floor(pixelScale * 0.08));
+                                const jxMax = (pixelScale / 2) - basePad;
+                                const jx = clamp((obj.offsetX || 0) * pixelScale, -jxMax, jxMax);
+
+                                const baseX = tileLeft + Math.floor(pixelScale / 2 + jx);
+                                const baseY = tileBottom - basePad;
+
+                                ctx.fillText(obj.emoji, baseX, baseY);
                             } else if (obj.type === 'fish') {
                                 visibleFish++;
                                 ctx.globalAlpha = 0.6 + Math.sin(Date.now() / 200 + obj.x) * 0.3;
