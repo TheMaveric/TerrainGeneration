@@ -688,6 +688,10 @@
         // CHUNKS AND DRAWING
         // =================================================================================
         let perlin, isGenerating = false, isGamePaused = false, isDebugViewActive = false, isContourOverlayActive = false;
+        // --- Weather & Season (globals) ---
+        const Weather = { type: '☀️', until: 0 }; // ☀️ (clear) | 🌧️ (rain) | ❄️ (snow)
+        let season = 0.25; // 0..1 (winter→spring→summer→autumn bias)
+
         let keys = {}, timeOfDay = 0.25, lastFrameTime = 0, lastFpsUpdateTime = 0;
         const fpsHistory = [], messages = [], particles = [];
         let minFps = Infinity, maxFps = 0;
@@ -808,6 +812,21 @@
             return { tint, extraWidth, alpha, speedMul, fishBoost };
         }
 
+        // --- River current: derive flow from height gradient ------------------------
+        function getHeightGrad(wx, wy, perlin, sliders) {
+            // finite difference on your continuous height field
+            const hC = getHeightValueAtWorldCoords(wx, wy, perlin.height, sliders.heightScale, sliders.persistence, sliders.mapScale);
+            const hX = getHeightValueAtWorldCoords(wx + 1, wy, perlin.height, sliders.heightScale, sliders.persistence, sliders.mapScale);
+            const hY = getHeightValueAtWorldCoords(wx, wy + 1, perlin.height, sliders.heightScale, sliders.persistence, sliders.mapScale);
+            // gradient points "uphill"; flow is opposite
+            return { fx: hC - hX, fy: hC - hY }; // flow ~ downhill vector
+        }
+
+        // normalize with safe guard
+        function normVec(x, y) {
+            const m = Math.hypot(x, y) || 1e-6;
+            return { x: x / m, y: y / m };
+        }
 
         function generateChunkData(chunkX, chunkY, sliders, sunVector, seed) {
             const key = `${chunkX},${chunkY}`;
@@ -881,7 +900,19 @@
                         if (y < CHUNK_SIZE - 1 && !isRiverLike(biomeGrid[i + CHUNK_SIZE])) riverOverlay.fillRect(x, y + 1, 1, 1);
                     }
 
-                    riverHints.push({ x, y, speedMul: style.speedMul, fishBoost: style.fishBoost });
+                    // flow vector (world space) for this river pixel
+                    const g = getHeightGrad(worldX, worldY, perlin, sliders);
+                    const nv = normVec(g.fx, g.fy);
+                    // base speed from style; scale a bit with gradient magnitude
+                    const gradMag = Math.min(1, Math.hypot(g.fx, g.fy) * 4.0);
+                    const currentStrength = style.speedMul * (0.6 + 0.6 * gradMag); // 0..~0.9
+
+                    riverHints.push({
+                        x, y,
+                        speedMul: style.speedMul,
+                        fishBoost: style.fishBoost,
+                        flow: { x: nv.x * currentStrength, y: nv.y * currentStrength }
+                    });
                 }
             }
 
@@ -979,6 +1010,19 @@
                     const screenY = Math.round((cy * CHUNK_SIZE - startTileY) * pixelScale);
 
                     ctx.drawImage(chunk.canvas, screenX, screenY, CHUNK_SIZE * pixelScale, CHUNK_SIZE * pixelScale);
+
+                    const now = performance.now();
+                    if (chunk.riverHints && pixelScale >= 8) {
+                        ctx.globalAlpha = 0.18;
+                        ctx.fillStyle = '#ffffff';
+                        for (let k = 0; k < chunk.riverHints.length; k += 3) {
+                            const h = chunk.riverHints[k];
+                            const sx = Math.round((h.x + ((now / 700) % 1) * (h.flow?.x ? Math.sign(h.flow.x) : 0)) * pixelScale) + screenX;
+                            const sy = Math.round((h.y + ((now / 700) % 1) * (h.flow?.y ? Math.sign(h.flow.y) : 0)) * pixelScale) + screenY;
+                            ctx.fillRect(sx, sy, Math.max(1, pixelScale / 6), Math.max(1, pixelScale / 6));
+                        }
+                        ctx.globalAlpha = 1.0;
+                    }
 
                     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
 
@@ -1109,6 +1153,43 @@
                 const pScreenX = (p.x - startTileX) * pixelScale, pScreenY = (p.y - startTileY) * pixelScale;
                 ctx.fillRect(pScreenX, pScreenY, p.size, p.size);
                 if (p.life <= 0) particles.splice(i, 1);
+            }
+
+            // --- Weather overlay & precipitation (drawn above particles) ---
+            if (Weather.type === '🌧️') {
+                // subtle cool tint
+                ctx.fillStyle = 'rgba(60,80,120,0.08)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // rain streaks
+                ctx.globalAlpha = 0.6;
+                ctx.fillStyle = 'rgba(200, 200, 255, 0.9)';
+                const n = Math.max(60, Math.min(140, Math.floor(canvas.width * canvas.height / 20000))); // scale with res
+                const t = performance.now();
+                for (let i = 0; i < n; i++) {
+                    // pseudo-random but stable pattern
+                    const rx = (i * 97 + t / 3) % canvas.width;
+                    const ry = (i * 53 + t / 1.6) % canvas.height;
+                    ctx.fillRect(rx, ry, 1, 8);
+                }
+                ctx.globalAlpha = 1.0;
+
+            } else if (Weather.type === '❄️') {
+                // faint bright tint
+                ctx.fillStyle = 'rgba(230,230,255,0.06)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // snowflakes
+                ctx.globalAlpha = 0.9;
+                ctx.fillStyle = 'rgba(255,255,255,0.95)';
+                const n = Math.max(40, Math.min(110, Math.floor(canvas.width * canvas.height / 30000)));
+                const t = performance.now();
+                for (let i = 0; i < n; i++) {
+                    const rx = (i * 137 + Math.sin(t / 900 + i) * 30 + canvas.width) % canvas.width;
+                    const ry = (i * 71 + t / 5) % canvas.height;
+                    ctx.fillRect(rx, ry, 2, 2);
+                }
+                ctx.globalAlpha = 1.0;
             }
 
             playerDiv.style.left = `${viewportWidth / 2}px`;
@@ -1260,6 +1341,26 @@
                 minFps = Math.min(minFps, fps); maxFps = Math.max(maxFps, fps);
                 DOMElements.currentFps.textContent = Math.round(fps); DOMElements.minFps.textContent = Math.round(minFps); DOMElements.maxFps.textContent = Math.round(maxFps);
             }
+            // --- Weather director: picks a weather regime for a short duration ---
+            {
+                const t = performance.now();
+                if (t > Weather.until) {
+                    const r = Math.random();
+                    let next = 'clear';
+                    let dur = 30000 + Math.random() * 30000; // 30–60s
+                    if (season < 0.25) {          // winter bias
+                        next = r < 0.40 ? '❄️' : (r < 0.65 ? '☀️' : '🌧️');
+                    } else if (season < 0.5) {    // spring
+                        next = r < 0.45 ? '🌧️' : '☀️';
+                    } else if (season < 0.75) {   // summer
+                        next = r < 0.15 ? '🌧️' : '☀️';
+                    } else {                      // autumn
+                        next = r < 0.35 ? '🌧️' : '☀️';
+                    }
+                    Weather.type = next;
+                    Weather.until = t + dur;
+                }
+            }
 
             const sliders = getSliderValues();
             let moveX = 0, moveY = 0;
@@ -1272,23 +1373,32 @@
             const currentBiome = getBiomeAtWorldCoords(Math.round(player.x), Math.round(player.y), perlin, sliders);
             // after: const currentBiome = getBiomeAtWorldCoords(...);
             let speedModifier = getMovementSpeedModifier(currentBiome);
+            // --- Weather speed nudge (mild global effect) ---
+            let weatherSpeedMul = 1.0;
+            if (Weather.type === '🌧️') weatherSpeedMul = 0.95;
+            else if (Weather.type === '❄️') weatherSpeedMul = 0.90;
 
-            // Dynamic river override: sample the current chunk's hint if on river
+            speedModifier *= weatherSpeedMul;
+            // Apply river current drift to player
             if (/river/i.test(currentBiome)) {
                 const cx = Math.floor(player.x / CHUNK_SIZE), cy = Math.floor(player.y / CHUNK_SIZE);
                 const chunk = chunkCache.get(`${cx},${cy}`);
                 if (chunk && chunk.riverHints && chunk.riverHints.length) {
                     const lx = Math.round(player.x - cx * CHUNK_SIZE);
                     const ly = Math.round(player.y - cy * CHUNK_SIZE);
-                    // find a nearby hint (tiny search)
                     let best = null, bestD = 2;
                     for (const h of chunk.riverHints) {
                         const d = Math.abs(h.x - lx) + Math.abs(h.y - ly);
                         if (d < bestD) { bestD = d; best = h; if (d === 0) break; }
                     }
-                    if (best) speedModifier = best.speedMul;
+                    if (best && best.flow) {
+                        // deltaTime available here; gentle push that respects your playerSpeed
+                        player.x += best.flow.x * 6 * deltaTime;
+                        player.y += best.flow.y * 6 * deltaTime;
+                    }
                 }
             }
+
 
 
             player.x += moveX * sliders.playerSpeed * deltaTime * 10 * speedModifier;
@@ -1556,5 +1666,4 @@
         };
     </script>
 </body>
-
 </html>
