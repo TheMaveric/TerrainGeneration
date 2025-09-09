@@ -190,6 +190,11 @@
                         <span>⌨️ Keys:</span>
                         <span id="keysText">...</span>
                     </div>
+                    <div class="flex justify-between items-center mt-1">
+                        <span>🎒 Bag:</span>
+                        <span id="invText" class="font-mono text-gray-300">—</span>
+                    </div>
+
                     <div
                         class="flex justify-between items-center text-xs text-gray-400 pt-1 border-t border-gray-700 mt-1">
                         <span>FPS:</span>
@@ -535,6 +540,13 @@
             'jungle', 'jungleHills', 'swamp', 'swampHills'
         ];
         const FIREFLY_BIOME_IDX = new Set(FIREFLY_BIOMES.map(n => BIOME_TO_INDEX.get(n)));
+        // Distinct looks for NPC roles
+        const NPC_STYLES = {
+            villager: { emoji: '🧑', ring: '#74a3b9', badge: null, scale: 1.00, glow: false, sparkle: null },
+            farmer: { emoji: '🧑‍🌾', ring: '#7dcf7b', badge: '🌾', scale: 1.05, glow: false, sparkle: null },
+            builder: { emoji: '🧑‍🔧', ring: '#a3a3a3', badge: '🔨', scale: 1.05, glow: false, sparkle: null },
+            trader: { emoji: '🧑‍💼', ring: '#ffd54a', badge: '🧺', scale: 1.22, glow: true, sparkle: '🪙' }
+        };
 
 
 
@@ -843,6 +855,21 @@
             return { dirX: Math.cos(angle), dirY: Math.sin(angle), strength };
         }
 
+        // --- Settlements (villages) & trading ---
+        const VILLAGE_RARITY = 0.012; // ~1.2% of suitable chunks attempt a village
+        const VILLAGE_MIN_LAND_RATIO = 0.82;
+        const VILLAGE_ALLOWED_BIOMES = new Set([
+            'plain', 'savanna', 'forest', 'forestHills', 'taiga', 'taigaHills', 'jungle', 'jungleHills', 'swamp', 'swampHills', 'desert', 'desertHills'
+        ]);
+
+        const ROLES = {
+            farmer: { emoji: '🧑‍🌾', offer: { give: { '🪵': 2 }, get: { '🍞': 1 } } },
+            vendor: { emoji: '🧺', offer: { give: { '🐟': 2 }, get: { '🧺': 1 } } }, // simple “basket” reward
+            smith: { emoji: '🔨', offer: { give: { '🪵': 4 }, get: { '🪓': 1 } } },
+        };
+
+        // nearest NPC with a valid trade each frame
+        let nearbyTradeNpc = null;
 
         // --- World life & hazards (new globals) ---
         let fireflies = [];                    // ephemeral night particles
@@ -857,6 +884,45 @@
         const FIREFLY_MAX = 36;
         const FIREFLY_VIEW_MARGIN = 6;         // tiles beyond viewport
         const FIREFLY_SPAWN_TRIES = 12;
+
+        function updateNpc(npc, dt, chunk, lightLevel) {
+            // simple day plan: work → market → home; night = home
+            const t = timeOfDay;                // 0..1
+            const isNight = lightLevel < 0.30;
+
+            // target (tx, ty)
+            let tx = npc.homeX, ty = npc.homeY;
+            if (!isNight) {
+                if (t > 0.45 && t < 0.55) {       // short “market hour”
+                    tx = npc.cx; ty = npc.cy;
+                } else {
+                    tx = npc.workX; ty = npc.workY; // normal work time
+                    if (Weather.type === '🌧️' && npc.role === 'farmer') { // farmers hide from rain
+                        tx = npc.cx; ty = npc.cy;
+                    }
+                }
+            }
+
+            // head toward target with tiny wander
+            npc.phase = (npc.phase || 0) + dt * 1.2;
+            const jitterX = Math.cos(npc.phase * 2.3) * 0.05;
+            const jitterY = Math.sin(npc.phase * 1.7) * 0.05;
+
+            let vx = (tx - npc.x) + jitterX;
+            let vy = (ty - npc.y) + jitterY;
+            const m = Math.hypot(vx, vy) || 1e-6; vx /= m; vy /= m;
+
+            const speed = (npc.speed || 1.0) * (Weather.type === '❄️' ? 0.85 : 1.0);
+            let nx = npc.x + vx * speed * dt;
+            let ny = npc.y + vy * speed * dt;
+
+            // keep out of water
+            if (!isWaterLikeAt(Math.round(nx), Math.round(ny))) {
+                npc.x = nx; npc.y = ny;
+            }
+        }
+
+
 
         // Hazard helpers
         function isFrozenBiomeName(b) {
@@ -886,7 +952,8 @@
 
         let player = {
             x: 0, y: 0,
-            fishLog: {}
+            fishLog: {},
+            inv: {} // emoji -> count
         };
 
         let DOMElements, canvas, viewport, playerDiv, playerEmojiSpan, seedInput, ctx, sliders;
@@ -925,6 +992,17 @@
             }
             if (farthestKey) { chunkCache.delete(farthestKey); }
         }
+
+        function invAdd(emoji, n = 1) { player.inv[emoji] = (player.inv[emoji] || 0) + n; }
+        function invHasAll(req) { for (const [e, q] of Object.entries(req)) if ((player.inv[e] || 0) < q) return false; return true; }
+        function invConsume(req) { for (const [e, q] of Object.entries(req)) player.inv[e] = (player.inv[e] || 0) - q; }
+        function invGrant(give) { for (const [e, q] of Object.entries(give)) invAdd(e, q); }
+        function formatOffer(o) {
+            const lhs = Object.entries(o.give).map(([e, q]) => `${q}${e}`).join(' + ');
+            const rhs = Object.entries(o.get).map(([e, q]) => `${q}${e}`).join(' + ');
+            return `${lhs} → ${rhs}`;
+        }
+
 
         function generatePerlinMaps() {
             const seed = parseInt(seedInput.value) || 0;
@@ -1036,6 +1114,116 @@
             return isWaterLikeBiomeName(getBiomeAtWorldCoords(wx, wy, perlin, getSliderValues()));
         }
 
+        function pickLandCenterInChunk(biomeIdx, waterMask) {
+            // try the true center, then a few jitters until we hit land
+            const tries = 20;
+            for (let t = 0; t < tries; t++) {
+                const cx = Math.floor(CHUNK_SIZE / 2 + (Math.random() - 0.5) * 8);
+                const cy = Math.floor(CHUNK_SIZE / 2 + (Math.random() - 0.5) * 8);
+                const i = cy * CHUNK_SIZE + cx;
+                if (!waterMask[i]) return { lx: cx, ly: cy };
+            }
+            return { lx: Math.floor(CHUNK_SIZE / 2), ly: Math.floor(CHUNK_SIZE / 2) };
+        }
+
+        function buildVillageInChunk(chunkX, chunkY, biomeIdx, waterMask, seed) {
+            // land ratio & dominant biome gate
+            let landCount = 0, landBiomeCounts = {};
+            for (let i = 0; i < biomeIdx.length; i++) if (!waterMask[i]) {
+                landCount++;
+                const name = BIOME_NAME[biomeIdx[i]];
+                landBiomeCounts[name] = (landBiomeCounts[name] || 0) + 1;
+            }
+            const landRatio = landCount / (CHUNK_SIZE * CHUNK_SIZE);
+            if (landRatio < VILLAGE_MIN_LAND_RATIO) return null;
+
+            let dom = null, best = -1;
+            for (const [name, c] of Object.entries(landBiomeCounts)) if (c > best) { best = c; dom = name; }
+            if (!VILLAGE_ALLOWED_BIOMES.has(dom)) return null;
+
+            // rarity / seed
+            const r = seededRandom(chunkX * 1259 + chunkY * 3371 + seed + 77)();
+            if (r > VILLAGE_RARITY) return null;
+
+            // center
+            const { lx, ly } = pickLandCenterInChunk(biomeIdx, waterMask);
+            const wx0 = chunkX * CHUNK_SIZE, wy0 = chunkY * CHUNK_SIZE;
+            const centerWx = wx0 + lx, centerWy = wy0 + ly;
+
+            // theme (just pick house emoji by climate)
+            const isDesert = /desert|badlands/i.test(dom);
+            const isJungle = /jungle|swamp/i.test(dom);
+            const HOUSE = isDesert ? '🛖' : (isJungle ? '🏚️' : '🏠');
+
+            // layout
+            const objects = [];
+            const houses = [];
+            const rand = seededRandom(chunkX * 8881 + chunkY * 113 + seed + 911);
+            const nHouses = 4 + Math.floor(rand() * 4); // 4..7
+            const ringR = 6 + Math.floor(rand() * 4);   // ring radius
+
+            const placeIfLand = (wx, wy, emoji, type, extra = {}) => {
+                const cx = Math.floor(wx) - wx0, cy = Math.floor(wy) - wy0;
+                if (cx < 0 || cy < 0 || cx >= CHUNK_SIZE || cy >= CHUNK_SIZE) return false;
+                const i = cy * CHUNK_SIZE + cx;
+                if (waterMask[i]) return false;
+                objects.push({ x: Math.round(wx), y: Math.round(wy), type, emoji, ...extra });
+                return true;
+            };
+
+            // central plaza (market/workshop live here)
+            placeIfLand(centerWx, centerWy, '🕯️', 'decor', { label: 'plaza' });
+
+            // houses around ring
+            for (let i = 0; i < nHouses; i++) {
+                const a = (i / nHouses) * Math.PI * 2 + rand() * 0.3;
+                const dx = Math.cos(a) * ringR + (rand() - 0.5) * 1.5;
+                const dy = Math.sin(a) * ringR + (rand() - 0.5) * 1.5;
+                const hx = centerWx + dx, hy = centerWy + dy;
+                if (placeIfLand(hx, hy, HOUSE, 'building')) houses.push({ x: Math.round(hx), y: Math.round(hy) });
+            }
+
+            // fields (🌾) in bands on one side
+            const fieldDir = (rand() < 0.5) ? { x: 1, y: 0 } : { x: 0, y: 1 };
+            for (let k = -2; k <= 2; k++) {
+                for (let s = -5; s <= 5; s++) {
+                    const fx = centerWx + fieldDir.x * (s + 7) + (fieldDir.y ? k : 0);
+                    const fy = centerWy + fieldDir.y * (s + 7) + (fieldDir.x ? k : 0);
+                    placeIfLand(fx, fy, '🌾', 'decor');
+                }
+            }
+
+            // market stall + workshop near plaza
+            const market = { x: centerWx + 2, y: centerWy + (rand() < 0.5 ? 1 : -1) };
+            const forge = { x: centerWx - 2, y: centerWy + (rand() < 0.5 ? -1 : 1) };
+            placeIfLand(market.x, market.y, '🧺', 'building', { label: 'stall' });
+            placeIfLand(forge.x, forge.y, '🔨', 'building', { label: 'forge' });
+
+            // NPCs (farmer, vendor, smith). Pick random homes.
+            const npcs = [];
+            const takeHome = () => houses[(Math.floor(rand() * houses.length)) | 0];
+            const mkNPC = (role, work) => {
+                const home = takeHome() || { x: centerWx, y: centerWy };
+                const d = ROLES[role];
+                npcs.push({
+                    type: 'npc',
+                    role,
+                    emoji: d.emoji,
+                    offer: d.offer,
+                    x: home.x, y: home.y,
+                    homeX: home.x, homeY: home.y,
+                    workX: work.x, workY: work.y,
+                    cx: centerWx, cy: centerWy,           // village center
+                    phase: rand() * Math.PI * 2,
+                    speed: 0.9 + rand() * 0.4
+                });
+            };
+            mkNPC('farmer', fieldDir.x ? { x: centerWx + 10, y: centerWy } : { x: centerWx, y: centerWy + 10 });
+            mkNPC('vendor', market);
+            mkNPC('smith', forge);
+
+            return { centerWx, centerWy, objects, npcs };
+        }
 
         function generateChunkData(chunkX, chunkY, sliders, sunVector, seed) {
             const key = `${chunkX},${chunkY}`;
@@ -1308,6 +1496,15 @@
             );
             objects.push(...floaters.filter(f => f));
             objects.push(...trees.filter(t => t !== null), ...fish.filter(f => f !== null));
+            // --- Procedural village (rare, per-chunk) ---
+            let village = buildVillageInChunk(chunkX, chunkY, biomeIdx, waterMask, seed);
+            if (village) {
+                // buildings/fields are just scene objects
+                for (const o of village.objects) objects.push(o);
+                // NPCs are objects too; keep them inside this chunk (their routines respect bounds)
+                for (const n of village.npcs) objects.push(n);
+            }
+
             chunkCache.set(key, {
                 canvas: chunkCanvas,
                 objects,
@@ -1316,7 +1513,8 @@
                 shoreline,
                 biomeIdx,
                 fireflyNests,
-                fireflies: [] // runtime instances appear at night
+                fireflies: [],
+                village // may be null
             });
 
             manageCache();
@@ -1324,9 +1522,87 @@
 
         const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
+        function renderNpc(obj, objScreenX, objScreenY, pixelScale, ctx) {
+            // Resolve role/style
+            const role = obj.role || (obj.offer ? 'trader' : 'villager');
+            const st = NPC_STYLES[role] || NPC_STYLES.villager;
+
+            const cx = objScreenX + pixelScale / 2;
+            const cy = objScreenY + pixelScale / 2;
+
+            // 1) Drop shadow (subtle for all)
+            ctx.save();
+            ctx.globalAlpha = 0.35;
+            ctx.fillStyle = 'black';
+            ctx.beginPath();
+            ctx.ellipse(cx, cy + pixelScale * 0.32, pixelScale * 0.35, pixelScale * 0.18, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+
+            // 2) Back ring (color-coded; traders glow)
+            ctx.save();
+            if (st.glow) {
+                const r = pixelScale * 0.75;
+                const g = ctx.createRadialGradient(cx, cy, r * 0.25, cx, cy, r);
+                g.addColorStop(0.00, 'rgba(255, 221, 120, 0.85)');
+                g.addColorStop(0.50, 'rgba(255, 213, 74, 0.35)');
+                g.addColorStop(1.00, 'rgba(255, 213, 74, 0.00)');
+                ctx.fillStyle = g;
+                ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+            } else {
+                ctx.globalAlpha = 0.35;
+                ctx.strokeStyle = st.ring;
+                ctx.lineWidth = Math.max(1, pixelScale * 0.12);
+                ctx.beginPath(); ctx.arc(cx, cy, pixelScale * 0.55, 0, Math.PI * 2); ctx.stroke();
+            }
+            ctx.restore();
+
+            // 3) Main emoji (bigger for trader)
+            ctx.save();
+            ctx.font = `${Math.max(12, pixelScale * st.scale)}px sans-serif`;
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText(st.emoji, cx, cy);
+            ctx.restore();
+
+            // 4) Role badge (top-right)
+            if (st.badge) {
+                const bx = cx + pixelScale * 0.45;
+                const by = cy - pixelScale * 0.45;
+                // badge background
+                ctx.save();
+                ctx.fillStyle = 'rgba(0,0,0,0.55)';
+                ctx.beginPath(); ctx.arc(bx, by, pixelScale * 0.28, 0, Math.PI * 2); ctx.fill();
+                ctx.restore();
+                // badge emoji
+                ctx.save();
+                ctx.font = `${Math.max(10, pixelScale * 0.6)}px sans-serif`;
+                ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillText(st.badge, bx, by);
+                ctx.restore();
+            }
+
+            // 5) Trader sparkle (rare, brief)
+            if (st.sparkle) {
+                const phase = (frameTick + ((obj.sparkSeed ??= (Math.random() * 1000) | 0))) % 90;
+                if (phase < 10) {
+                    const sx = cx + (Math.random() - 0.5) * pixelScale * 0.9;
+                    const sy = cy - pixelScale * 0.9 + Math.random() * pixelScale * 0.3;
+                    ctx.save();
+                    ctx.globalAlpha = 0.85;
+                    ctx.font = `${Math.max(10, pixelScale * 0.55)}px sans-serif`;
+                    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                    ctx.fillText(st.sparkle, sx, sy);
+                    ctx.restore();
+                }
+            }
+        }
+
+
         function drawWorld(deltaTime = 0) {
             if (isGenerating || !perlin) return { visibleTrees: 0, visibleFish: 0 };
             if (isDebugViewActive) { return drawDebugSpawnsView(); }
+
+            nearbyTradeNpc = null;
 
             const sliders = getSliderValues();
             const { pixelScale } = sliders;
@@ -1462,6 +1738,16 @@
                             obj.vx = vx; obj.vy = vy; obj.x = nx; obj.y = ny;
                         }
                     }
+
+                    // NPC update (simple routine)
+                    if (deltaTime > 0 && chunk.objects && chunk.objects.length) {
+                        const lightLevel = timeInfo.lightLevel;
+                        for (let i = 0; i < chunk.objects.length; i++) {
+                            const obj = chunk.objects[i];
+                            if (obj.type === 'npc') updateNpc(obj, deltaTime, chunk, lightLevel);
+                        }
+                    }
+
 
                     drawList.push({ chunk, screenX, screenY, cx, cy });
                 }
@@ -1667,6 +1953,30 @@
                         ctx.fillText(obj.emoji, objScreenX + pixelScale / 2, objScreenY + pixelScale / 2);
                         ctx.globalAlpha = 1.0;
                     }
+                    else if (obj.type === 'npc') {
+                        // ❶ Render with strong visual identity by role
+                        renderNpc(obj, objScreenX, objScreenY, pixelScale, ctx);
+
+                        // ❷ Keep trade targeting logic (unchanged)
+                        const d = Math.hypot(obj.x - player.x, obj.y - player.y);
+                        const canTrade = (typeof invHasAll === 'function')
+                            ? invHasAll((obj.offer && obj.offer.give) || {})
+                            : true; // fallback if you don’t have inventory yet
+
+                        // Treat anyone with an offer (or role === 'trader') as a trader for prompts
+                        const isTrader = (obj.role === 'trader') || !!obj.offer;
+
+                        if (isTrader && d < 1.6 && canTrade) {wdd
+                            if (!nearbyTradeNpc || d < nearbyTradeNpc._d) {
+                                nearbyTradeNpc = {
+                                    npc: obj,
+                                    sx: objScreenX + pixelScale / 2,
+                                    sy: objScreenY - pixelScale * 0.2,
+                                    _d: d
+                                };
+                            }
+                        }
+                    }
 
                     if (showSpawnOverlay) {
                         ctx.save();
@@ -1794,6 +2104,30 @@
                     if (chunk.fireflies && chunk.fireflies.length) chunk.fireflies.length = 0;
                 }
             }
+
+            // trade prompt (draw once)
+            if (nearbyTradeNpc) {
+                const offerText = (typeof formatOffer === 'function' && nearbyTradeNpc.npc.offer)
+                    ? formatOffer(nearbyTradeNpc.npc.offer)
+                    : 'Trade';
+
+                const txt = `E: ${offerText}`;
+                ctx.save();
+                ctx.font = `${Math.max(10, pixelScale * 0.7)}px sans-serif`;
+                ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+
+                // shadow box
+                const w = ctx.measureText(txt).width + 12;
+                const x = nearbyTradeNpc.sx, y = nearbyTradeNpc.sy;
+                ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                ctx.fillRect(x - w / 2, y - 18, w, 16);
+
+                // text
+                ctx.fillStyle = '#fff';
+                ctx.fillText(txt, x, y - 4);
+                ctx.restore();
+            }
+
 
             // Keep player centered
             playerDiv.style.left = `${vw / 2}px`;
@@ -2123,6 +2457,7 @@
                         } else {
                             showMessage(`You've already discovered the ${object.name}.`);
                         }
+                        invAdd('🐟', 1);
                         chunk.objects.splice(objIndex, 1);
                         for (let i = 0; i < 5; i++) particles.push(new Particle(worldX, worldY));
                     }
@@ -2282,6 +2617,7 @@
                 joystick: document.getElementById('joystick'),
                 joystickHandle: document.getElementById('joystickHandle'),
                 lightingToggle: document.getElementById('lightingToggle'),
+                inventoryText: document.getElementById('invText'),
             };
 
             DOMElements.seedInput.value = Math.floor(Math.random() * 90000) + 10000; // Set a random starting seed
@@ -2355,6 +2691,20 @@
                     handleGenerate(false);
                     return;
                 }
+                else if (key === 'e') {
+                    if (nearbyTradeNpc && nearbyTradeNpc.npc && nearbyTradeNpc.npc.offer && typeof invHasAll === 'function') {
+                        const o = nearbyTradeNpc.npc.offer;
+                        if (invHasAll(o.give)) {
+                            invConsume(o.give);
+                            invGrant(o.get);
+                            showMessage(`Trade: ${typeof formatOffer === 'function' ? formatOffer(o) : 'Done'}`);
+                        } else {
+                            showMessage('You are missing items to trade.');
+                        }
+                    }
+                    return;
+                }
+
                 keys[e.key.toLowerCase()] = true;
             });
 
