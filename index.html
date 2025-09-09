@@ -241,6 +241,11 @@
 
         <div id="settingsHud"
             class="absolute top-1/2 right-4 -translate-y-1/2 bg-gray-800 bg-opacity-90 p-4 rounded-lg shadow-lg z-40 w-64 max-h-[80vh] overflow-y-auto transition-all duration-300 collapsed collapsible-hud">
+            <div class="flex items-center justify-between">
+                <label for="lightingToggle" class="text-sm font-semibold text-gray-300">Lighting</label>
+                <input id="lightingToggle" type="checkbox" class="w-5 h-5 accent-blue-500" checked />
+            </div>
+
             <div class="flex justify-between items-center mb-4 title-bar">
                 <h3 class="text-lg font-bold text-white transition-all duration-300">World
                     Settings</h3>
@@ -296,9 +301,10 @@
                 </div>
                 <div class="flex flex-col items-center">
                     <label for="waterLevelSlider" class="text-sm font-semibold mb-2 text-gray-300">Water
-                        Level: <span id="waterLevelValue">0.45</span></label>
-                    <input type="range" id="waterLevelSlider" min="0.0" max="1.0" step="0.05" value="0.45"
+                        Level: <span id="waterLevelValue">0.450</span></label>
+                    <input type="range" id="waterLevelSlider" min="0.000" max="1.000" step="0.001" value="0.450"
                         class="w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-600">
+
                 </div>
                 <div class="flex flex-col items-center">
                     <label for="treeDensitySlider" class="text-sm font-semibold mb-2 text-gray-300">Tree
@@ -515,6 +521,15 @@
             'lowlandRiver': [37, 174, 255],    // keep bright
             'deltaRiver': [60, 170, 200],      // murky blue
         };
+        // === Fast biome lookup tables =====================================
+        const BIOME_KEYS = Object.keys(BIOME_COLORS);
+        const BIOME_TO_INDEX = new Map(BIOME_KEYS.map((k, i) => [k, i]));
+        const BIOME_NAME = BIOME_KEYS; // index -> name
+        const BIOME_COLOR_ARRAY = BIOME_KEYS.map(k => BIOME_COLORS[k]);
+        const BIOME_IS_WATERLIKE = BIOME_KEYS.map(k =>
+            k.includes('Water') || /river/i.test(k) || k === 'beach' || k === 'snowyBeach'
+        );
+
 
         function remapNoise(value, exponent) {
             return Math.pow(value, exponent);
@@ -543,16 +558,18 @@
 
             // REPLACE your current river check with this block:
             if (h >= 132) {
-                // dynamic river threshold
-                let riverThreshold = 0.97;
-                const nearSea = h < 140;                  // just inland of beaches
-                const isMarshy = (m > 75 && t > 50);      // warm & wet
+                let riverThreshold = 0.965;          // hybrid: continuous but still branchy
+                const nearSea = h < 140;
+                const isMarshy = (m > 75 && t > 50);
                 const isArid = (t > 66 && m <= 25) || (t > 25 && t <= 66 && m <= 25);
-                if (nearSea) riverThreshold -= 0.015;     // widen at mouths → deltas
-                if (isMarshy) riverThreshold -= 0.005;    // a bit more frequent in swamps/jungle
-                if (isArid) riverThreshold += 0.015;     // harder in deserts/badlands
+
+                // moderate deltas/marshes, not overpowering
+                if (nearSea) riverThreshold -= 0.015;
+                if (isMarshy) riverThreshold -= 0.007;
+                if (isArid) riverThreshold += 0.017;
+
                 if (riverValue > riverThreshold) {
-                    if (t <= 25) return 'frozenRiver';    // cold beats other subtypes first
+                    if (t <= 25) return 'frozenRiver';
                     if (nearSea) return 'deltaRiver';
                     if (isMarshy) return 'marshRiver';
                     if (h > 200) return 'mountainRiver';
@@ -598,8 +615,67 @@
             moistureValue = remapNoise(moistureValue, sliders.climateContrast);
             temperatureValue = remapNoise(temperatureValue, sliders.climateContrast);
 
-            const rawRiverNoise = getOctaveNoise(worldX, worldY, perlin.river, 40, sliders.persistence, 10, sliders.mapScale);
-            const riverValue = 1 - Math.abs(rawRiverNoise * 2 - 1);
+            // --- HYBRID RIVERS: long trunks + detailed branches + mild deltas ---
+            const RIVER_TRUNK_SCALE = 95;   // 70–120 → longer/smoother trunks when higher
+            const RIVER_DETAIL_SCALE = 34;   // 26–45 → more/less branch detail
+            const RIVER_MAP_SCALE = 1.0;  // decouple from sliders.mapScale
+
+            // Gentle domain warp so paths meander
+            const WARP1_SCALE = 240, WARP2_SCALE = 520, WARP_AMPL = 12;
+            const wu = getOctaveNoise(worldX, worldY, perlin.object, WARP1_SCALE, 0.5, 10, 1.0);
+            const wv = getOctaveNoise(worldX, worldY, perlin.temperature, WARP2_SCALE, 0.5, 10, 1.0);
+            const wx = worldX + (wu - 0.5) * WARP_AMPL;
+            const wy = worldY + (wv - 0.5) * WARP_AMPL;
+
+            // Long “trunk” field (ridged)
+            const trunkRaw = getOctaveNoise(wx, wy, perlin.river, RIVER_TRUNK_SCALE, sliders.persistence, 10, RIVER_MAP_SCALE);
+            const trunkRidged = 1 - Math.abs(trunkRaw * 2 - 1);
+
+            // Higher-frequency detail (ridged) to spawn tributaries/branches
+            const detailRaw = getOctaveNoise(wx, wy, perlin.river, RIVER_DETAIL_SCALE, 0.55, 10, RIVER_MAP_SCALE);
+            const detailRidged = 1 - Math.abs(detailRaw * 2 - 1);
+
+            // A de-correlated helper for branches so they don’t mirror trunks
+            const tribRaw = getOctaveNoise(wx, wy, perlin.object, 42, 0.5, 10, 1.0);
+            const tribRidged = 1 - Math.abs(tribRaw * 2 - 1);
+
+            // Blend: keep continuous trunks, add fine branches (moisture helps branches)
+            const branchWeight = 0.55; // 0 → trunks only, 1 → lots of branches
+            const branchField = (detailRidged * 0.6 + tribRidged * 0.4) * (0.55 + 0.45 * moistureValue);
+            let riverSignal = Math.max(trunkRidged, trunkRidged * 0.5 + branchField * branchWeight);
+
+            // Lightweight continuity bridge so near-misses connect (sample 4-neighbors on trunk)
+            const n1 = getOctaveNoise(wx + 1, wy, perlin.river, RIVER_TRUNK_SCALE, sliders.persistence, 10, RIVER_MAP_SCALE);
+            const n2 = getOctaveNoise(wx - 1, wy, perlin.river, RIVER_TRUNK_SCALE, sliders.persistence, 10, RIVER_MAP_SCALE);
+            const n3 = getOctaveNoise(wx, wy + 1, perlin.river, RIVER_TRUNK_SCALE, sliders.persistence, 10, RIVER_MAP_SCALE);
+            const n4 = getOctaveNoise(wx, wy - 1, perlin.river, RIVER_TRUNK_SCALE, sliders.persistence, 10, RIVER_MAP_SCALE);
+            const neighTrunk = Math.max(
+                1 - Math.abs(n1 * 2 - 1),
+                1 - Math.abs(n2 * 2 - 1),
+                1 - Math.abs(n3 * 2 - 1),
+                1 - Math.abs(n4 * 2 - 1)
+            );
+            riverSignal = Math.max(riverSignal, neighTrunk * 0.985);
+
+            // Gentle valley & moisture bias (keeps trunks crossing the map, but favors low/wet)
+            const landV = Math.max(0, Math.min(1, (heightValue - sliders.waterLevel) / (1 - sliders.waterLevel)));
+            const valleyBoost = 0.80 + 0.30 * (1 - landV);                 // prefer lower land
+            const moistureBoost = 0.88 + 0.28 * remapNoise(moistureValue, 1.1); // prefer wetter climates
+
+            // Compute absolute 'h' like in getBiomeFromValues to spot near-sea for deltas
+            const landHeight = (heightValue - sliders.waterLevel) / (1 - sliders.waterLevel);
+            const h = (heightValue < sliders.waterLevel)
+                ? (1 - (sliders.waterLevel - heightValue) / sliders.waterLevel) * 128
+                : 128 + landHeight * 127;
+            const nearSea = (h >= 132 && h < 140);
+
+            // Mild widening near sea → deltas without overwhelming trunks
+            const deltaWiden = nearSea ? 1.05 : 1.0;
+
+            // Final river field (clamped)
+            const riverValue = Math.max(0, Math.min(1, riverSignal * valleyBoost * moistureBoost * deltaWiden));
+
+
             return getBiomeFromValues(heightValue, moistureValue, temperatureValue, riverValue, sliders);
         }
 
@@ -710,9 +786,14 @@
         // =================================================================================
         let perlin, isGenerating = false, isGamePaused = false, isDebugViewActive = false, isContourOverlayActive = false;
         let showSpawnOverlay = false; // NEW: toggled with P
+        let isLightingEnabled = true;
         // --- Weather & Season (globals) ---
         const Weather = { type: '☀️', until: 0 }; // ☀️ (clear) | 🌧️ (rain) | ❄️ (snow)
         let season = 0.25; // 0..1 (winter→spring→summer→autumn bias)
+
+        // --- Water FX quality + frame tick (add right below Weather/season globals) ---
+        let waterFxQuality = 1; // 0=Off, 1=Streaks+Shimmer, 2=+Foam, 3=reserved
+        let frameTick = 0;
 
         let keys = {}, timeOfDay = 0.25, lastFrameTime = 0, lastFpsUpdateTime = 0;
         const fpsHistory = [], messages = [], particles = [];
@@ -728,7 +809,7 @@
         const minimapCtx = minimapCanvas.getContext('2d');
         minimapCanvas.width = minimapCanvas.height = 100;
 
-        const CHUNK_SIZE = 32, MAX_CACHE_SIZE = 250;
+        const CHUNK_SIZE = 32, MAX_CACHE_SIZE = 250, MAX_CHUNKS_PER_FRAME = 3;
         const chunkCache = new Map();
         const rawNoiseCache = new Map();
         let lastMinimapPlayerPos = { x: null, y: null };
@@ -850,11 +931,32 @@
             return { x: x / m, y: y / m };
         }
 
+        function getChunk(cx, cy) {
+            return chunkCache.get(`${cx},${cy}`);
+        }
+
+        function getBiomeIndexFromCache(wx, wy) {
+            const cx = Math.floor(wx / CHUNK_SIZE), cy = Math.floor(wy / CHUNK_SIZE);
+            const chunk = getChunk(cx, cy);
+            if (!chunk || !chunk.biomeIdx) return -1;
+            const lx = wx - cx * CHUNK_SIZE, ly = wy - cy * CHUNK_SIZE;
+            if (lx < 0 || ly < 0 || lx >= CHUNK_SIZE || ly >= CHUNK_SIZE) return -1;
+            return chunk.biomeIdx[ly * CHUNK_SIZE + lx];
+        }
+
+        function isWaterLikeAt(wx, wy) {
+            const idx = getBiomeIndexFromCache(wx, wy);
+            if (idx >= 0) return !!BIOME_IS_WATERLIKE[idx];
+            // fallback (rare)
+            return isWaterLikeBiomeName(getBiomeAtWorldCoords(wx, wy, perlin, getSliderValues()));
+        }
+
+
         function generateChunkData(chunkX, chunkY, sliders, sunVector, seed) {
             const key = `${chunkX},${chunkY}`;
             // Store per-pixel biome; used by banks/branches/foam
+            const biomeIdx = new Uint16Array(CHUNK_SIZE * CHUNK_SIZE);
             const biomeGrid = new Array(CHUNK_SIZE * CHUNK_SIZE);
-
             // Fast helpers
             const isRiverLike = (b) => b && /river/i.test(b);
             const isWaterLike = (b) => b && (b.includes('Water') || isRiverLike(b) || b === 'beach' || b === 'snowyBeach');
@@ -869,30 +971,67 @@
                     const worldX = chunkX * CHUNK_SIZE + x, worldY = chunkY * CHUNK_SIZE + y;
 
                     const biome = getBiomeAtWorldCoords(worldX, worldY, perlin, sliders);
-                    biomeGrid[y * CHUNK_SIZE + x] = biome;
+                    const bIndex = BIOME_TO_INDEX.get(biome);
+                    const i1d = y * CHUNK_SIZE + x;
+                    biomeIdx[i1d] = bIndex;
+                    biomeGrid[i1d] = biome; // <-- add
                     const heightValue = getHeightValueAtWorldCoords(worldX, worldY, perlin.height, sliders.heightScale, sliders.persistence, sliders.mapScale);
-                    const baseColor = BIOME_COLORS[biome] || [0, 0, 0];
-                    const lightness = getPixelLightness(worldX, worldY, heightValue, perlin.height, sliders, sunVector);
+                    const baseColor = BIOME_COLOR_ARRAY[bIndex] || [0, 0, 0];
+                    const lightness = isLightingEnabled
+                        ? getPixelLightness(worldX, worldY, heightValue, perlin.height, sliders, sunVector)
+                        : 1.0;
+
 
                     const [r, g, b] = baseColor.map(c => Math.min(255, Math.max(0, c * lightness)));
                     const idx = (y * CHUNK_SIZE + x) * 4;
                     [data[idx], data[idx + 1], data[idx + 2], data[idx + 3]] = [r, g, b, 255];
                 }
             }
-            chunkCtx.putImageData(chunkImageData, 0, 0);
-            // --- Biome-aware river rendering & bank effects -----------------------------
-            const riverHints = []; // per-pixel style hints (for speed/fish nudges at runtime)
+            // --- Precompute water mask + shoreline for cheap per-frame drawing ---
+            const waterMask = new Uint8Array(CHUNK_SIZE * CHUNK_SIZE);
+            const shoreline = [];
+            for (let y = 0; y < CHUNK_SIZE; y++) {
+                for (let x = 0; x < CHUNK_SIZE; x++) {
+                    const i = y * CHUNK_SIZE + x;
+                    waterMask[i] = BIOME_IS_WATERLIKE[biomeIdx[i]] ? 1 : 0;
+                }
+            }
+            // find shoreline cells (water cells adjacent to non-water)
+            for (let y = 0; y < CHUNK_SIZE; y++) {
+                for (let x = 0; x < CHUNK_SIZE; x++) {
+                    const i = y * CHUNK_SIZE + x;
+                    if (!waterMask[i]) continue;
 
-            const nearSeaH = 148;
-            const heightCacheLocal = new Map();
+                    const getWaterAt = (lx, ly) => {
+                        if (lx >= 0 && lx < CHUNK_SIZE && ly >= 0 && ly < CHUNK_SIZE) {
+                            return waterMask[ly * CHUNK_SIZE + lx];
+                        }
+                        const wx = chunkX * CHUNK_SIZE + lx;
+                        const wy = chunkY * CHUNK_SIZE + ly;
+                        const ncx = Math.floor(wx / CHUNK_SIZE), ncy = Math.floor(wy / CHUNK_SIZE);
+                        const neighbor = getChunk(ncx, ncy);
+                        if (neighbor && neighbor.waterMask) {
+                            const nlx = wx - ncx * CHUNK_SIZE, nly = wy - ncy * CHUNK_SIZE;
+                            return neighbor.waterMask[nly * CHUNK_SIZE + nlx] || 0;
+                        }
+                        // rare fallback
+                        return isWaterLikeBiomeName(getBiomeAtWorldCoords(wx, wy, perlin, sliders)) ? 1 : 0;
+                    };
 
-            function isNearSea(wx, wy) {
-                const h = getAbsoluteHeight(wx, wy, perlin, sliders, heightCacheLocal);
-                return h < 140 && h >= 132; // your near-beach buffer
+                    const left = getWaterAt(x - 1, y);
+                    const right = getWaterAt(x + 1, y);
+                    const up = getWaterAt(x, y - 1);
+                    const down = getWaterAt(x, y + 1);
+                    if (!(left && right && up && down)) shoreline.push(i);
+                }
             }
 
-            // clear any prior shading and redraw banks/tints
-            const riverOverlay = chunkCtx; // draw directly for speed
+
+
+            // --- Biome-aware river rendering & bank effects ---
+            const riverHints = [];
+            const heightCacheLocal = new Map();
+
             for (let y = 0; y < CHUNK_SIZE; y++) {
                 for (let x = 0; x < CHUNK_SIZE; x++) {
                     const i = y * CHUNK_SIZE + x;
@@ -903,42 +1042,46 @@
                     const worldY = chunkY * CHUNK_SIZE + y;
 
                     const domLand = getDominantNeighborLandBiome(biomeGrid, x, y);
-                    const style = getRiverStyle(domLand, isNearSea(worldX, worldY));
+                    const style = getRiverStyle(domLand, (() => {
+                        const h = getAbsoluteHeight(worldX, worldY, perlin, sliders, heightCacheLocal);
+                        return h < 140 && h >= 132;
+                    })());
 
-                    // Tint the river pixel toward style.tint (mix with what’s already drawn)
-                    const img = chunkCtx.getImageData(x, y, 1, 1);
-                    const pr = img.data[0], pg = img.data[1], pb = img.data[2];
-                    const [nr, ng, nb] = rgbMix([pr, pg, pb], style.tint, 0.55); // strong tint
-                    img.data[0] = nr; img.data[1] = ng; img.data[2] = nb; img.data[3] = 255;
-                    chunkCtx.putImageData(img, x, y);
+                    // mix color directly in the buffer (no get/put per pixel)
+                    const idx = (i << 2);
+                    const pr = data[idx], pg = data[idx + 1], pb = data[idx + 2];
+                    const [nr, ng, nb] = rgbMix([pr, pg, pb], style.tint, 0.55);
+                    data[idx] = nr; data[idx + 1] = ng; data[idx + 2] = nb;
 
-                    // Halo to fake width/braiding (1px ring; wider in deserts/delta/jungle)
+                    // cheap 4-neighborhood halo (optional)
                     if (style.extraWidth > 0) {
-                        riverOverlay.fillStyle = `rgba(${style.tint[0]}, ${style.tint[1]}, ${style.tint[2]}, ${style.alpha})`;
-                        // ring in 4-neighborhood
-                        if (x > 0 && !isRiverLike(biomeGrid[i - 1])) riverOverlay.fillRect(x - 1, y, 1, 1);
-                        if (x < CHUNK_SIZE - 1 && !isRiverLike(biomeGrid[i + 1])) riverOverlay.fillRect(x + 1, y, 1, 1);
-                        if (y > 0 && !isRiverLike(biomeGrid[i - CHUNK_SIZE])) riverOverlay.fillRect(x, y - 1, 1, 1);
-                        if (y < CHUNK_SIZE - 1 && !isRiverLike(biomeGrid[i + CHUNK_SIZE])) riverOverlay.fillRect(x, y + 1, 1, 1);
+                        const halo = (xx, yy) => {
+                            if (xx < 0 || yy < 0 || xx >= CHUNK_SIZE || yy >= CHUNK_SIZE) return;
+                            const ii = (yy * CHUNK_SIZE + xx) << 2;
+                            // alpha blend against existing buffer
+                            data[ii] = Math.round(data[ii] * (1 - style.alpha) + style.tint[0] * style.alpha);
+                            data[ii + 1] = Math.round(data[ii + 1] * (1 - style.alpha) + style.tint[1] * style.alpha);
+                            data[ii + 2] = Math.round(data[ii + 2] * (1 - style.alpha) + style.tint[2] * style.alpha);
+                        };
+                        halo(x - 1, y); halo(x + 1, y); halo(x, y - 1); halo(x, y + 1);
                     }
 
-                    // flow vector (world space) for this river pixel
+                    // flow hint
                     const g = getHeightGrad(worldX, worldY, perlin, sliders);
-                    const nv = normVec(g.fx, g.fy);
-                    // base speed from style; scale a bit with gradient magnitude
+                    const n = (() => { const m = Math.hypot(g.fx, g.fy) || 1e-6; return { x: g.fx / m, y: g.fy / m }; })();
                     const gradMag = Math.min(1, Math.hypot(g.fx, g.fy) * 4.0);
-                    const currentStrength = style.speedMul * (0.6 + 0.6 * gradMag); // 0..~0.9
+                    const currentStrength = style.speedMul * (0.6 + 0.6 * gradMag);
 
                     riverHints.push({
                         x, y,
                         speedMul: style.speedMul,
                         fishBoost: style.fishBoost,
-                        flow: { x: nv.x * currentStrength, y: nv.y * currentStrength }
+                        flow: { x: n.x * currentStrength, y: n.y * currentStrength }
                     });
                 }
             }
 
-
+            chunkCtx.putImageData(chunkImageData, 0, 0);
 
             const trees = PoissonDisk.generatePointsForChunk(chunkX, chunkY, perlin, sliders, seed,
                 getTreePlacementRadius,
@@ -1018,7 +1161,7 @@
             );
 
             objects.push(...trees.filter(t => t !== null), ...fish.filter(f => f !== null));
-            chunkCache.set(key, { canvas: chunkCanvas, objects, riverHints }); // instead of earlier set
+            chunkCache.set(key, { canvas: chunkCanvas, objects, riverHints, waterMask, shoreline, biomeIdx });
             manageCache();
         }
 
@@ -1030,269 +1173,283 @@
 
             const sliders = getSliderValues();
             const { pixelScale } = sliders;
-            const viewportWidth = viewport.clientWidth, viewportHeight = viewport.clientHeight;
+            const vw = viewport.clientWidth, vh = viewport.clientHeight;
 
-            canvas.width = viewportWidth; canvas.height = viewportHeight;
-            ctx.clearRect(0, 0, viewportWidth, viewportHeight);
+            canvas.width = vw; canvas.height = vh;
+            ctx.clearRect(0, 0, vw, vh);
             ctx.imageSmoothingEnabled = false;
 
-            const viewTilesX = viewportWidth / pixelScale, viewTilesY = viewportHeight / pixelScale;
+            const viewTilesX = vw / pixelScale, viewTilesY = vh / pixelScale;
             const startTileX = player.x - viewTilesX / 2, endTileX = player.x + viewTilesX / 2;
             const startTileY = player.y - viewTilesY / 2, endTileY = player.y + viewTilesY / 2;
             const startChunkX = Math.floor(startTileX / CHUNK_SIZE), endChunkX = Math.ceil(endTileX / CHUNK_SIZE);
             const startChunkY = Math.floor(startTileY / CHUNK_SIZE), endChunkY = Math.ceil(endTileY / CHUNK_SIZE);
 
             let visibleTrees = 0, visibleFish = 0;
-            const visibleBiomeCounts = {};
+            const countsByIndex = new Uint32Array(BIOME_NAME.length);
 
             const angle = (timeOfDay - 0.25) * 2 * Math.PI;
             const sunVector = [-Math.cos(angle), -Math.sin(angle)];
             const seed = parseInt(seedInput.value) || 0;
+            const timeInfo = getTimeOfDayInfo();
+            const fishDayFactor = Math.max(0.4, timeInfo.lightLevel);
+
+            // FIRST PASS: draw chunks (generate with a per-frame budget) + update fish AI
+            let builtThisFrame = 0;
+            const drawList = [];
 
             for (let cy = startChunkY; cy < endChunkY; cy++) {
                 for (let cx = startChunkX; cx < endChunkX; cx++) {
                     const key = `${cx},${cy}`;
-                    if (!chunkCache.has(key)) { generateChunkData(cx, cy, sliders, sunVector, seed); }
-                    const chunk = chunkCache.get(key);
+                    let chunk = chunkCache.get(key);
+                    if (!chunk) {
+                        if (builtThisFrame < MAX_CHUNKS_PER_FRAME) {
+                            generateChunkData(cx, cy, sliders, sunVector, seed);
+                            builtThisFrame++;
+                            chunk = chunkCache.get(key);
+                        } else {
+                            // skip drawing this chunk this frame
+                            continue;
+                        }
+                    }
                     if (!chunk) continue;
 
                     const screenX = Math.round((cx * CHUNK_SIZE - startTileX) * pixelScale);
                     const screenY = Math.round((cy * CHUNK_SIZE - startTileY) * pixelScale);
-
                     ctx.drawImage(chunk.canvas, screenX, screenY, CHUNK_SIZE * pixelScale, CHUNK_SIZE * pixelScale);
 
-                    const now = performance.now();
-                    if (chunk.riverHints && pixelScale >= 8) {
-                        ctx.globalAlpha = 0.18;
-                        ctx.fillStyle = '#ffffff';
-                        for (let k = 0; k < chunk.riverHints.length; k += 3) {
-                            const h = chunk.riverHints[k];
-                            const sx = Math.round((h.x + ((now / 700) % 1) * (h.flow?.x ? Math.sign(h.flow.x) : 0)) * pixelScale) + screenX;
-                            const sy = Math.round((h.y + ((now / 700) % 1) * (h.flow?.y ? Math.sign(h.flow.y) : 0)) * pixelScale) + screenY;
-                            ctx.fillRect(sx, sy, Math.max(1, pixelScale / 6), Math.max(1, pixelScale / 6));
-                        }
-                        ctx.globalAlpha = 1.0;
-                    }
-
-                    // --- Fish AI update (only when advancing time) ---
+                    // Fish AI update (cheap operations only; reuse dayFactor)
                     if (deltaTime > 0 && chunk.objects && chunk.objects.length) {
                         for (let i = 0; i < chunk.objects.length; i++) {
                             const obj = chunk.objects[i];
                             if (obj.type !== 'fish') continue;
 
-                            // Parameters
-                            const dayFactor = Math.max(0.4, getTimeOfDayInfo().lightLevel); // slower at night
-                            const speed = (obj.speed || 1.2) * dayFactor;
-
-                            // Gentle sinusoidal “wiggle” vector
+                            const speed = (obj.speed || 1.2) * fishDayFactor;
                             obj.phase = (obj.phase || 0) + deltaTime * 2.0;
+
                             const wiggleX = Math.cos(obj.phase) * 0.15;
                             const wiggleY = Math.sin(obj.phase) * 0.15;
 
-                            // Soft schooling: nudge toward home center
-                            const toHomeX = (obj.homeX - obj.x);
-                            const toHomeY = (obj.homeY - obj.y);
+                            const toHomeX = (obj.homeX - obj.x), toHomeY = (obj.homeY - obj.y);
                             const distHome = Math.hypot(toHomeX, toHomeY) + 1e-6;
-                            const homePull = Math.min(0.8, distHome * 0.02); // stronger when far
-                            const nHomeX = toHomeX / distHome;
-                            const nHomeY = toHomeY / distHome;
+                            const homePull = Math.min(0.8, distHome * 0.02);
+                            const nHomeX = toHomeX / distHome, nHomeY = toHomeY / distHome;
 
-                            // Flee player if too close
-                            const dPX = (player.x - obj.x);
-                            const dPY = (player.y - obj.y);
+                            const dPX = (player.x - obj.x), dPY = (player.y - obj.y);
                             const dToPlayer = Math.hypot(dPX, dPY) + 1e-6;
                             let fleeX = 0, fleeY = 0;
-                            if (dToPlayer < 10) { // within ~10 tiles
+                            if (dToPlayer < 10) {
                                 fleeX = -(dPX / dToPlayer) * 0.8;
                                 fleeY = -(dPY / dToPlayer) * 0.8;
                             }
 
-                            // River current drift at fish location
-                            const flow = getRiverFlowAt(obj.x, obj.y, chunk);  // ~0..1
-                            const flowX = flow.x * 2.2;
-                            const flowY = flow.y * 2.2;
+                            const flow = getRiverFlowAt(obj.x, obj.y, chunk);
+                            const flowX = flow.x * 2.2, flowY = flow.y * 2.2;
 
-                            // Desired heading = current vel + wiggle + schooling + flee + current
                             let vx = (obj.vx || 0) + wiggleX + nHomeX * homePull + fleeX + flowX * deltaTime;
                             let vy = (obj.vy || 0) + wiggleY + nHomeY * homePull + fleeY + flowY * deltaTime;
+                            const vm = Math.hypot(vx, vy) || 1e-6; vx /= vm; vy /= vm;
 
-                            // Normalize
-                            const vm = Math.hypot(vx, vy) || 1e-6;
-                            vx /= vm; vy /= vm;
-
-                            // Proposed move
                             const step = speed * deltaTime;
-                            let nx = obj.x + vx * step;
-                            let ny = obj.y + vy * step;
+                            let nx = obj.x + vx * step, ny = obj.y + vy * step;
 
-                            // Stay in water: if next biome isn’t water, steer back & dampen
-                            const nextBiome = getBiomeAtWorldCoords(Math.round(nx), Math.round(ny), perlin, sliders);
-                            if (!isWaterLikeBiomeName(nextBiome)) {
-                                // reflect roughly: push toward home and invert a bit
-                                vx = -vx * 0.4 + nHomeX * 0.8;
-                                vy = -vy * 0.4 + nHomeY * 0.8;
-                                const m2 = Math.hypot(vx, vy) || 1e-6;
-                                vx /= m2; vy /= m2;
-                                nx = obj.x + vx * step * 0.6;
-                                ny = obj.y + vy * step * 0.6;
+                            // water-boundary check via cached water masks
+                            if (!isWaterLikeAt(Math.round(nx), Math.round(ny))) {
+                                vx = -vx * 0.4 + nHomeX * 0.8; vy = -vy * 0.4 + nHomeY * 0.8;
+                                const m2 = Math.hypot(vx, vy) || 1e-6; vx /= m2; vy /= m2;
+                                nx = obj.x + vx * step * 0.6; ny = obj.y + vy * step * 0.6;
                             }
 
-                            // Commit
-                            obj.x = nx; obj.y = ny;
-                            obj.vx = vx; obj.vy = vy;
+                            obj.x = nx; obj.y = ny; obj.vx = vx; obj.vy = vy;
                         }
                     }
 
+                    drawList.push({ chunk, screenX, screenY, cx, cy });
+                }
+            }
 
-                    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            // Biome counts (legend) using cached chunk biomes (no perlin)
+            for (const { cx, cy } of drawList) {
+                const localStartX = Math.max(0, Math.floor(startTileX - cx * CHUNK_SIZE));
+                const localEndX = Math.min(CHUNK_SIZE, Math.ceil(endTileX - cx * CHUNK_SIZE));
+                const localStartY = Math.max(0, Math.floor(startTileY - cy * CHUNK_SIZE));
+                const localEndY = Math.min(CHUNK_SIZE, Math.ceil(endTileY - cy * CHUNK_SIZE));
 
-                    for (const obj of chunk.objects) {
-                        const objScreenX = (obj.x - startTileX) * pixelScale, objScreenY = (obj.y - startTileY) * pixelScale;
-                        if (objScreenX >= -pixelScale && objScreenX <= viewportWidth && objScreenY >= -pixelScale && objScreenY <= viewportHeight) {
-                            if (obj.type === 'tree') {
-                                visibleTrees++;
-
-                                // Cache an integer font size per tree per pixelScale
-                                if (!obj._fontCache || obj._fontCache.scale !== pixelScale) {
-                                    const px = Math.max(8, Math.round(pixelScale * 1.2 * (obj.height * 0.5)));
-                                    obj._fontCache = { scale: pixelScale, px };
-                                }
-
-                                ctx.font = `${obj._fontCache.px}px sans-serif`;
-                                ctx.textAlign = 'center';
-                                ctx.textBaseline = 'bottom';
-
-                                // Keep the base inside this tile; canopy can overflow
-                                const tileLeft = Math.floor(objScreenX);
-                                const tileTop = Math.floor(objScreenY);
-                                const tileBottom = tileTop + pixelScale;
-
-                                const basePad = Math.max(1, Math.floor(pixelScale * 0.08));
-                                const jxMax = (pixelScale / 2) - basePad;
-                                const jx = clamp((obj.offsetX || 0) * pixelScale, -jxMax, jxMax);
-
-                                const baseX = tileLeft + Math.floor(pixelScale / 2 + jx);
-                                const baseY = tileBottom - basePad;
-
-                                ctx.fillText(obj.emoji, baseX, baseY);
-                            } else if (obj.type === 'fish') {
-                                visibleFish++;
-                                ctx.globalAlpha = 0.6 + Math.sin(Date.now() / 200 + obj.x) * 0.3;
-                                ctx.font = `${pixelScale * 0.8}px sans-serif`;
-                                ctx.fillText(obj.emoji, objScreenX + pixelScale / 2, objScreenY + pixelScale / 2);
-                                ctx.globalAlpha = 1.0;
-                            }
-                        }
-                        if (showSpawnOverlay) {
-                            ctx.save();
-                            ctx.lineWidth = 2;
-                            ctx.strokeStyle = (obj.type === 'fish') ? '#00FFFF' : '#00FF66'; // fish=cyan, trees=green
-                            ctx.strokeRect(
-                                Math.floor(objScreenX) + 1,
-                                Math.floor(objScreenY) + 1,
-                                Math.max(2, pixelScale - 2),
-                                Math.max(2, pixelScale - 2)
-                            );
-                            ctx.restore();
-                        }
+                const chunk = getChunk(cx, cy); if (!chunk || !chunk.biomeIdx) continue;
+                // stride sampling scales with zoom: fewer reads when zoomed out
+                const stride = Math.max(1, Math.floor(12 / Math.max(1, pixelScale)));
+                for (let y = localStartY; y < localEndY; y += stride) {
+                    const rowOff = y * CHUNK_SIZE;
+                    for (let x = localStartX; x < localEndX; x += stride) {
+                        countsByIndex[chunk.biomeIdx[rowOff + x]]++;
                     }
                 }
             }
 
-            for (let wy = Math.floor(startTileY); wy < Math.ceil(endTileY); wy++) {
-                for (let wx = Math.floor(startTileX); wx < Math.ceil(endTileX); wx++) {
-                    const biome = getBiomeAtWorldCoords(wx, wy, perlin, sliders);
-                    visibleBiomeCounts[biome] = (visibleBiomeCounts[biome] || 0) + 1;
-                }
-            }
-
+            // Optional contours (left unchanged, but runs AFTER counts so we can early return)
             if (isContourOverlayActive) {
-                const contourInterval = 20; // Draw a line every 20 height units
-                const majorContourInterval = 100; // Thicker line and label
-                const contourColor = 'rgba(0, 0, 0, 0.4)';
-                const majorContourColor = 'rgba(0, 0, 0, 0.7)';
-                const labelColor = 'rgba(255, 255, 255, 0.9)';
-                const heightCache = new Map();
-                const labelInterval = Math.max(10, Math.round(120 / pixelScale));
-
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.shadowColor = 'black';
-                ctx.shadowBlur = 2;
-
-
+                const contourInterval = 20, majorContourInterval = 100;
+                const contourColor = 'rgba(0, 0, 0, 0.4)', majorContourColor = 'rgba(0, 0, 0, 0.7)', labelColor = 'rgba(255, 255, 255, 0.9)';
+                const heightCache = new Map(); const labelInterval = Math.max(10, Math.round(120 / pixelScale));
+                ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.shadowColor = 'black'; ctx.shadowBlur = 2;
                 for (let y = Math.floor(startTileY); y < endTileY; y++) {
                     for (let x = Math.floor(startTileX); x < endTileX; x++) {
                         const h1 = getAbsoluteHeight(x, y, perlin, sliders, heightCache);
-
                         const h2 = getAbsoluteHeight(x + 1, y, perlin, sliders, heightCache);
                         let minH = Math.min(h1, h2), maxH = Math.max(h1, h2);
-                        let contourLevel = Math.ceil(minH / contourInterval) * contourInterval;
-
-                        while (contourLevel < maxH) {
-                            const isMajor = contourLevel % majorContourInterval === 0;
+                        let level = Math.ceil(minH / contourInterval) * contourInterval;
+                        while (level < maxH) {
+                            const isMajor = level % majorContourInterval === 0;
                             ctx.strokeStyle = isMajor ? majorContourColor : contourColor;
                             ctx.lineWidth = isMajor ? 2 : 1.5;
-
-                            const screenX = (x + 1 - startTileX) * pixelScale;
-                            const screenY = (y - startTileY) * pixelScale;
-                            ctx.beginPath();
-                            ctx.moveTo(screenX, screenY);
-                            ctx.lineTo(screenX, screenY + pixelScale);
-                            ctx.stroke();
-
+                            const sx = (x + 1 - startTileX) * pixelScale, sy = (y - startTileY) * pixelScale;
+                            ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx, sy + pixelScale); ctx.stroke();
                             if (y % labelInterval === 0) {
                                 ctx.font = `bold ${isMajor ? Math.max(9, pixelScale / 1.4) : Math.max(7, pixelScale / 1.6)}px sans-serif`;
-                                ctx.fillStyle = labelColor;
-                                ctx.fillText(contourLevel, screenX + 3, screenY + pixelScale / 2);
+                                ctx.fillStyle = labelColor; ctx.fillText(level, sx + 3, sy + pixelScale / 2);
                             }
-                            contourLevel += contourInterval;
+                            level += contourInterval;
                         }
 
                         const h3 = getAbsoluteHeight(x, y + 1, perlin, sliders, heightCache);
                         minH = Math.min(h1, h3); maxH = Math.max(h1, h3);
-                        contourLevel = Math.ceil(minH / contourInterval) * contourInterval;
-
-                        while (contourLevel < maxH) {
-                            const isMajor = contourLevel % majorContourInterval === 0;
+                        level = Math.ceil(minH / contourInterval) * contourInterval;
+                        while (level < maxH) {
+                            const isMajor = level % majorContourInterval === 0;
                             ctx.strokeStyle = isMajor ? majorContourColor : contourColor;
                             ctx.lineWidth = isMajor ? 2 : 1.5;
-
-                            const screenX = (x - startTileX) * pixelScale;
-                            const screenY = (y + 1 - startTileY) * pixelScale;
-                            ctx.beginPath();
-                            ctx.moveTo(screenX, screenY);
-                            ctx.lineTo(screenX + pixelScale, screenY);
-                            ctx.stroke();
-
+                            const sx = (x - startTileX) * pixelScale, sy = (y + 1 - startTileY) * pixelScale;
+                            ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx + pixelScale, sy); ctx.stroke();
                             if (x % labelInterval === 0) {
                                 ctx.font = `bold ${isMajor ? Math.max(9, pixelScale / 1.4) : Math.max(7, pixelScale / 1.6)}px sans-serif`;
-                                ctx.fillStyle = labelColor;
-                                ctx.fillText(contourLevel, screenX + pixelScale / 2, screenY + 3);
+                                ctx.fillStyle = labelColor; ctx.fillText(level, sx + pixelScale / 2, sy + 3);
                             }
-                            contourLevel += contourInterval;
+                            level += contourInterval;
                         }
                     }
                 }
-                ctx.shadowBlur = 0; // Reset shadow
+                ctx.shadowBlur = 0;
             }
 
-            const timeInfo = getTimeOfDayInfo();
-            const centerX = canvas.width / 2, horizonY = canvas.height / 2 + 50, skyPathRadius = Math.min(canvas.width, canvas.height) * 0.7;
-            const sunX = centerX - Math.cos(angle) * skyPathRadius, sunY = horizonY - Math.sin(angle) * skyPathRadius;
-            const moonX = centerX + Math.cos(angle) * skyPathRadius, moonY = horizonY + Math.sin(angle) * skyPathRadius;
+            // Day/Night overlay & bodies (wrap with lighting)
+            if (isLightingEnabled) {
+                const centerX = canvas.width / 2, horizonY = canvas.height / 2 + 50;
+                const skyPathRadius = Math.min(canvas.width, canvas.height) * 0.7;
+                const sunX = centerX - Math.cos(angle) * skyPathRadius, sunY = horizonY - Math.sin(angle) * skyPathRadius;
+                const moonX = centerX + Math.cos(angle) * skyPathRadius, moonY = horizonY + Math.sin(angle) * skyPathRadius;
 
-            if (sunY < horizonY + 20) {
-                ctx.fillStyle = 'rgba(255, 255, 150, 0.9)'; ctx.beginPath(); ctx.arc(sunX, sunY, 30, 0, 2 * Math.PI); ctx.fill();
+                if (sunY < horizonY + 20) { ctx.fillStyle = 'rgba(255, 255, 150, 0.9)'; ctx.beginPath(); ctx.arc(sunX, sunY, 30, 0, 2 * Math.PI); ctx.fill(); }
+                if (moonY < horizonY + 20) { ctx.fillStyle = 'rgba(230, 230, 240, 0.8)'; ctx.beginPath(); ctx.arc(moonX, moonY, 25, 0, 2 * Math.PI); ctx.fill(); }
+
+                const overlayAlpha = (1 - timeInfo.lightLevel) * 0.75, tint = timeInfo.tint;
+                ctx.fillStyle = `rgba(${tint[0] * 30}, ${tint[1] * 40}, ${tint[2] * 80}, ${overlayAlpha})`;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
             }
-            if (moonY < horizonY + 20) {
-                ctx.fillStyle = 'rgba(230, 230, 240, 0.8)'; ctx.beginPath(); ctx.arc(moonX, moonY, 25, 0, 2 * Math.PI); ctx.fill();
+
+            // SECOND PASS: water FX (auto-throttled) + objects
+            for (const { chunk, screenX, screenY } of drawList) {
+                if (waterFxQuality >= 1 && chunk.riverHints && pixelScale >= 8) {
+                    ctx.globalAlpha = 0.16;
+                    ctx.fillStyle = '#ffffff';
+                    const now = performance.now();
+                    const step = Math.max(2, Math.floor(4 / Math.max(1, pixelScale / 10))); // fewer streaks when zoomed out
+                    for (let k = 0; k < chunk.riverHints.length; k += step) {
+                        const h = chunk.riverHints[k];
+                        const sx = Math.round((h.x + ((now / 700) % 1) * (h.flow?.x ? Math.sign(h.flow.x) : 0)) * pixelScale) + screenX;
+                        const sy = Math.round((h.y + ((now / 700) % 1) * (h.flow?.y ? Math.sign(h.flow.y) : 0)) * pixelScale) + screenY;
+                        ctx.fillRect(sx, sy, 1, 1);
+                    }
+                    ctx.globalAlpha = 1.0;
+                }
+
+                if (waterFxQuality >= 1 && chunk.waterMask) {
+                    ctx.globalAlpha = 0.07;
+                    ctx.fillStyle = '#ffffff';
+                    const stride = Math.max(3, Math.floor(8 / Math.max(1, pixelScale / 8)));
+                    const w = CHUNK_SIZE, h = CHUNK_SIZE;
+                    const phase = (frameTick >> 1) & 7;
+                    for (let y = 0; y < h; y += stride) {
+                        for (let x = (y & 1); x < w; x += stride) {
+                            const i = y * w + x;
+                            if (!chunk.waterMask[i]) continue;
+                            if (((x + y + phase) & 7) === 0) {
+                                const sx = Math.round(x * pixelScale) + screenX;
+                                const sy = Math.round(y * pixelScale) + screenY;
+                                ctx.fillRect(sx, sy, 1, 1);
+                            }
+                        }
+                    }
+                    ctx.globalAlpha = 1.0;
+                }
+
+                if (waterFxQuality >= 2 && chunk.shoreline && chunk.shoreline.length) {
+                    const t = performance.now() * 0.001;
+                    const a = 0.10 + 0.06 * (0.5 + 0.5 * Math.sin(t));
+                    ctx.globalAlpha = a;
+                    ctx.fillStyle = '#ffffff';
+                    const step = (pixelScale >= 10) ? 3 : 4;
+                    for (let s = 0; s < chunk.shoreline.length; s += step) {
+                        const i = chunk.shoreline[s];
+                        const x = (i % CHUNK_SIZE), y = (i / CHUNK_SIZE) | 0;
+                        const sx = Math.round(x * pixelScale) + screenX;
+                        const sy = Math.round(y * pixelScale) + screenY;
+                        ctx.fillRect(sx, sy, 1, 1);
+                    }
+                    ctx.globalAlpha = 1.0;
+                }
             }
 
-            const overlayAlpha = (1 - timeInfo.lightLevel) * 0.75, tint = timeInfo.tint;
-            ctx.fillStyle = `rgba(${tint[0] * 30}, ${tint[1] * 40}, ${tint[2] * 80}, ${overlayAlpha})`;
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            for (const { chunk } of drawList) {
+                for (const obj of (chunk.objects || [])) {
+                    const objScreenX = (obj.x - startTileX) * pixelScale;
+                    const objScreenY = (obj.y - startTileY) * pixelScale;
+                    if (objScreenX < -pixelScale || objScreenX > vw || objScreenY < -pixelScale || objScreenY > vh) continue;
 
+                    if (obj.type === 'tree') {
+                        visibleTrees++;
+                        if (!obj._fontCache || obj._fontCache.scale !== pixelScale) {
+                            const px = Math.max(8, Math.round(pixelScale * 1.2 * (obj.height * 0.5)));
+                            obj._fontCache = { scale: pixelScale, px };
+                        }
+                        ctx.font = `${obj._fontCache.px}px sans-serif`;
+                        ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+
+                        const tileLeft = Math.floor(objScreenX);
+                        const tileTop = Math.floor(objScreenY);
+                        const tileBottom = tileTop + pixelScale;
+
+                        const basePad = Math.max(1, Math.floor(pixelScale * 0.08));
+                        const jxMax = (pixelScale / 2) - basePad;
+                        const jx = clamp((obj.offsetX || 0) * pixelScale, -jxMax, jxMax);
+
+                        const baseX = tileLeft + Math.floor(pixelScale / 2 + jx);
+                        const baseY = tileBottom - basePad;
+                        ctx.fillText(obj.emoji, baseX, baseY);
+                    } else if (obj.type === 'fish') {
+                        visibleFish++;
+                        ctx.globalAlpha = 0.6 + Math.sin(frameTick / 12 + obj.x) * 0.3;
+                        ctx.font = `${pixelScale * 0.8}px sans-serif`;
+                        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                        ctx.fillText(obj.emoji, objScreenX + pixelScale / 2, objScreenY + pixelScale / 2);
+                        ctx.globalAlpha = 1.0;
+                    }
+
+                    if (showSpawnOverlay) {
+                        ctx.save();
+                        ctx.lineWidth = 2;
+                        ctx.strokeStyle = (obj.type === 'fish') ? '#00FFFF' : '#00FF66';
+                        ctx.strokeRect(
+                            Math.floor(objScreenX) + 1,
+                            Math.floor(objScreenY) + 1,
+                            Math.max(2, pixelScale - 2),
+                            Math.max(2, pixelScale - 2)
+                        );
+                        ctx.restore();
+                    }
+                }
+            }
+
+            // Particles
             ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
             for (let i = particles.length - 1; i >= 0; i--) {
                 const p = particles[i];
@@ -1302,48 +1459,43 @@
                 if (p.life <= 0) particles.splice(i, 1);
             }
 
-            // --- Weather overlay & precipitation (drawn above particles) ---
+            // Weather
             if (Weather.type === '🌧️') {
-                // subtle cool tint
-                ctx.fillStyle = 'rgba(60,80,120,0.08)';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-                // rain streaks
-                ctx.globalAlpha = 0.6;
-                ctx.fillStyle = 'rgba(200, 200, 255, 0.9)';
-                const n = Math.max(60, Math.min(140, Math.floor(canvas.width * canvas.height / 20000))); // scale with res
-                const t = performance.now();
+                ctx.fillStyle = 'rgba(60,80,120,0.08)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.globalAlpha = 0.6; ctx.fillStyle = 'rgba(200, 200, 255, 0.9)';
+                const n = Math.max(60, Math.min(140, Math.floor(canvas.width * canvas.height / 20000)));
                 for (let i = 0; i < n; i++) {
-                    // pseudo-random but stable pattern
-                    const rx = (i * 97 + t / 3) % canvas.width;
-                    const ry = (i * 53 + t / 1.6) % canvas.height;
+                    const rx = (i * 97 + frameTick * 2) % canvas.width;
+                    const ry = (i * 53 + frameTick * 3) % canvas.height;
                     ctx.fillRect(rx, ry, 1, 8);
                 }
                 ctx.globalAlpha = 1.0;
-
             } else if (Weather.type === '❄️') {
-                // faint bright tint
-                ctx.fillStyle = 'rgba(230,230,255,0.06)';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-                // snowflakes
-                ctx.globalAlpha = 0.9;
-                ctx.fillStyle = 'rgba(255,255,255,0.95)';
+                ctx.fillStyle = 'rgba(230,230,255,0.06)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.globalAlpha = 0.9; ctx.fillStyle = 'rgba(255,255,255,0.95)';
                 const n = Math.max(40, Math.min(110, Math.floor(canvas.width * canvas.height / 30000)));
-                const t = performance.now();
                 for (let i = 0; i < n; i++) {
-                    const rx = (i * 137 + Math.sin(t / 900 + i) * 30 + canvas.width) % canvas.width;
-                    const ry = (i * 71 + t / 5) % canvas.height;
+                    const rx = (i * 137 + Math.sin(frameTick / 30 + i) * 30 + canvas.width) % canvas.width;
+                    const ry = (i * 71 + frameTick * 2) % canvas.height;
                     ctx.fillRect(rx, ry, 2, 2);
                 }
                 ctx.globalAlpha = 1.0;
             }
 
-            playerDiv.style.left = `${viewportWidth / 2}px`;
-            playerDiv.style.top = `${viewportHeight / 2}px`;
+            // Keep player centered
+            playerDiv.style.left = `${vw / 2}px`;
+            playerDiv.style.top = `${vh / 2}px`;
+
+            // Convert biome counts to {name:count}
+            const visibleBiomeCounts = {};
+            for (let i = 0; i < countsByIndex.length; i++) {
+                const c = countsByIndex[i];
+                if (c) visibleBiomeCounts[BIOME_NAME[i]] = c;
+            }
 
             return { visibleTrees, visibleFish, visibleBiomeCounts };
         }
+
 
         // Replace your drawDebugNoiseView() with this:
         function drawDebugSpawnsView() {
@@ -1442,29 +1594,29 @@
 
         function drawMinimap() {
             const roundedPlayerX = Math.round(player.x), roundedPlayerY = Math.round(player.y);
-            // No need to redraw minimap if player hasn't moved to a new tile
             if (lastMinimapPlayerPos.x === roundedPlayerX && lastMinimapPlayerPos.y === roundedPlayerY) return;
             lastMinimapPlayerPos.x = roundedPlayerX; lastMinimapPlayerPos.y = roundedPlayerY;
 
             minimapCtx.clearRect(0, 0, 100, 100);
             minimapCtx.imageSmoothingEnabled = false;
 
-            const MINIMAP_ZOOM = 4; // Each pixel on minimap represents a 4x4 area of game tiles
+            const MINIMAP_ZOOM = 4;
             const startX = roundedPlayerX - (minimapCanvas.width / 2) * MINIMAP_ZOOM;
             const startY = roundedPlayerY - (minimapCanvas.height / 2) * MINIMAP_ZOOM;
-            const sliders = getSliderValues();
 
             for (let y = 0; y < 100; y++) {
                 for (let x = 0; x < 100; x++) {
-                    const worldX = startX + x * MINIMAP_ZOOM;
-                    const worldY = startY + y * MINIMAP_ZOOM;
-                    const biome = getBiomeAtWorldCoords(worldX, worldY, perlin, sliders);
-                    const color = BIOME_COLORS[biome] || [0, 0, 0];
+                    const wx = startX + x * MINIMAP_ZOOM;
+                    const wy = startY + y * MINIMAP_ZOOM;
+
+                    const idx = getBiomeIndexFromCache(wx, wy);
+                    const color = (idx >= 0 ? BIOME_COLOR_ARRAY[idx] : [0, 0, 0]);
                     minimapCtx.fillStyle = `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
                     minimapCtx.fillRect(x, y, 1, 1);
                 }
             }
         }
+
 
         // =================================================================================
         // GAME STATE, HUD, AND LOOP
@@ -1550,12 +1702,22 @@
             requestAnimationFrame(gameLoop);
             if (isGamePaused) return;
             const deltaTime = (timestamp - lastFrameTime) / 1000 || 0;
+            // advance a cheap integer frame counter for bitwise patterns
+            frameTick = (frameTick + 1) | 0;
             lastFrameTime = timestamp;
 
             if (timestamp - lastFpsUpdateTime > 100) {
                 const fps = 1 / deltaTime;
                 fpsHistory.push(fps); if (fpsHistory.length > 60) fpsHistory.shift();
                 minFps = Math.min(minFps, fps); maxFps = Math.max(maxFps, fps);
+                // Auto-throttle water FX to protect FPS
+                if (fps < 28 && waterFxQuality > 0) {
+                    waterFxQuality = 0;
+                } else if (fps < 40 && waterFxQuality > 1) {
+                    waterFxQuality = 1;
+                } else if (fps > 55 && waterFxQuality < 2) {
+                    waterFxQuality = 2;
+                }
                 DOMElements.currentFps.textContent = Math.round(fps); DOMElements.minFps.textContent = Math.round(minFps); DOMElements.maxFps.textContent = Math.round(maxFps);
             }
             // --- Weather director: picks a weather regime for a short duration ---
@@ -1616,14 +1778,9 @@
                 }
             }
 
-
-
             player.x += moveX * sliders.playerSpeed * deltaTime * 10 * speedModifier;
             player.y += moveY * sliders.playerSpeed * deltaTime * 10 * speedModifier;
 
-            // REPLACE this line:
-            // const isSwimming = (currentBiome.includes('Water') || currentBiome === 'river');
-            // WITH:
             const isSwimming = (currentBiome.includes('Water') || /river/i.test(currentBiome));
             playerEmojiSpan.textContent = isSwimming ? '🏊' : '🚶';
 
@@ -1809,6 +1966,7 @@
                 mobileControls: document.getElementById('mobileControls'),
                 joystick: document.getElementById('joystick'),
                 joystickHandle: document.getElementById('joystickHandle'),
+                lightingToggle: document.getElementById('lightingToggle'),
             };
 
             DOMElements.seedInput.value = Math.floor(Math.random() * 90000) + 10000; // Set a random starting seed
@@ -1820,7 +1978,7 @@
                 moistureScale: { slider: DOMElements.moistureScaleSlider, span: DOMElements.moistureScaleValue },
                 climateContrast: { slider: DOMElements.climateContrastSlider, span: DOMElements.climateContrastValue, fixed: 1 },
                 persistence: { slider: DOMElements.persistenceSlider, span: DOMElements.persistenceValue },
-                waterLevel: { slider: DOMElements.waterLevelSlider, span: DOMElements.waterLevelValue },
+                waterLevel: { slider: DOMElements.waterLevelSlider, span: DOMElements.waterLevelValue, fixed: 3 },
                 treeDensity: { slider: DOMElements.treeDensitySlider, span: DOMElements.treeDensityValue, suffix: 'x', fixed: 1 },
                 fishDensity: { slider: DOMElements.fishDensitySlider, span: DOMElements.fishDensityValue, suffix: 'x', fixed: 1 },
                 mapScale: { slider: DOMElements.mapScaleSlider, span: DOMElements.mapScaleValue, fixed: 2 },
@@ -1834,6 +1992,13 @@
             DOMElements.toggleLegend.addEventListener('click', () => {
                 DOMElements.legendHud.classList.toggle('collapsed');
             });
+            DOMElements.lightingToggle.addEventListener('change', () => {
+                isLightingEnabled = DOMElements.lightingToggle.checked;
+                showMessage(`Lighting: ${isLightingEnabled ? 'On' : 'Off'}`);
+                // Rebuild chunks so per-pixel shading matches the new mode
+                handleGenerate(false);
+            });
+
 
             window.addEventListener('resize', handleLoadAndResize);
             seedInput.addEventListener('change', () => handleGenerate(true));
@@ -1858,18 +2023,23 @@
                 const key = e.key.toLowerCase();
 
                 if (key === 'p') {
-                    if (e.shiftKey) {
-                        // Shift+P = river-noise heatmap (your current debug)
-                        isDebugViewActive = !isDebugViewActive;
-                        chunkCache.clear();
-                    } else {
-                        // P = show actual spawn positions overlay
-                        showSpawnOverlay = !showSpawnOverlay;
-                    }
+                    if (e.shiftKey) { isDebugViewActive = !isDebugViewActive; chunkCache.clear(); }
+                    else { showSpawnOverlay = !showSpawnOverlay; }
+                    return; // <--
                 } else if (key === 'h') {
                     isContourOverlayActive = !isContourOverlayActive;
+                    return; // <--
+                } else if (key === 'o') {
+                    waterFxQuality = (waterFxQuality + 1) % 3;
+                    showMessage(`Water FX: ${['Off', 'Low', 'Med'][waterFxQuality]}`);
+                    return; // <--
+                } else if (key === 'l') {
+                    isLightingEnabled = !isLightingEnabled;
+                    if (DOMElements.lightingToggle) DOMElements.lightingToggle.checked = isLightingEnabled;
+                    showMessage(`Lighting: ${isLightingEnabled ? 'On' : 'Off'}`);
+                    handleGenerate(false);
+                    return;
                 }
-
                 keys[e.key.toLowerCase()] = true;
             });
 
